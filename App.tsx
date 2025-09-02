@@ -404,6 +404,7 @@ export const AIContext = createContext<AIContextType>({
 export default function App() {
   const [view, setView] = useState('menu'); // 'menu' - menu chính, 'create-world' - tạo thế giới, 'game' - trò chơi
   const [gameState, setGameState] = useState<SaveData | null>(null);
+  const [gameStateKey, setGameStateKey] = useState<number>(Date.now());
   const [isApiSettingsModalOpen, setIsApiSettingsModalOpen] = useState(false);
   const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
   const [keyRotationNotification, setKeyRotationNotification] = useState<string | null>(null);
@@ -847,17 +848,24 @@ Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, t�
           setIsInitializing(false);
       }, 800);
       
+      setGameStateKey(Date.now()); // Force GameScreen re-mount for new game
       setView('game');
       console.log('🎮 StartNewGame: Chuyển sang chế độ game - HOÀN THÀNH');
   }
 
   const handleLoadGameFromFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.json')) {
+        alert('Vui lòng chọn tệp có định dạng .json');
+        return;
+    }
+    
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
             const text = e.target?.result;
             if (typeof text === 'string') {
                 const loadedJson = JSON.parse(text);
+                
                 // Xác thực cơ bản
                 if (loadedJson.worldData && loadedJson.knownEntities && loadedJson.gameHistory) {
                     const pc = Object.values(loadedJson.knownEntities).find((e: any) => e.type === 'pc');
@@ -873,7 +881,49 @@ Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, t�
                                 { id: '2', name: 'Trúc Cơ', requiredExp: 100 }
                             ], // Tương thích ngược
                         },
-                        knownEntities: loadedJson.knownEntities,
+                        knownEntities: (() => {
+                            // Clean up duplicate skills in PC entity
+                            const entities = { ...loadedJson.knownEntities };
+                            console.log('🧹 CleanDuplicateSkills: Starting cleanup process...');
+                            console.log('🧹 CleanDuplicateSkills: Total entities:', Object.keys(entities).length);
+                            
+                            Object.keys(entities).forEach(key => {
+                                const entity = entities[key];
+                                console.log(`🧹 CleanDuplicateSkills: Checking entity "${key}" type:`, entity.type);
+                                
+                                if (entity.type === 'pc' && entity.learnedSkills && Array.isArray(entity.learnedSkills)) {
+                                    console.log(`🧹 CleanDuplicateSkills: Found PC "${entity.name}" with ${entity.learnedSkills.length} skills:`, entity.learnedSkills);
+                                    
+                                    const originalSkills = [...entity.learnedSkills];
+                                    const seenSkills = new Set();
+                                    
+                                    entity.learnedSkills = entity.learnedSkills.filter(skill => {
+                                        // Normalize skill name - trim whitespace and convert to compare base name
+                                        const normalizedSkill = skill.trim();
+                                        const baseSkill = normalizedSkill.replace(/\s*\([^)]+\)\s*$/, '').trim(); // Remove mastery level
+                                        
+                                        // Check if base skill already exists
+                                        const existingSkill = [...seenSkills].find(existing => {
+                                            const existingBase = existing.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            return existingBase === baseSkill;
+                                        });
+                                        
+                                        if (existingSkill) {
+                                            console.log(`🧹 CleanDuplicateSkills: Found duplicate - keeping "${existingSkill}", removing "${normalizedSkill}"`);
+                                            return false;
+                                        }
+                                        
+                                        seenSkills.add(normalizedSkill);
+                                        return true;
+                                    });
+                                    
+                                    console.log(`🧹 CleanDuplicateSkills: PC ${entity.name} before cleanup:`, originalSkills);
+                                    console.log(`🧹 CleanDuplicateSkills: PC ${entity.name} after cleanup:`, entity.learnedSkills);
+                                    console.log(`🧹 CleanDuplicateSkills: Removed ${originalSkills.length - entity.learnedSkills.length} duplicates`);
+                                }
+                            });
+                            return entities;
+                        })(),
                         statuses: loadedJson.statuses || [],
                         quests: loadedJson.quests || [],
                         gameHistory: loadedJson.gameHistory,
@@ -912,16 +962,27 @@ Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, t�
                     delete (validatedData as any).userKnowledge;
 
                     setGameState(validatedData);
+                    setGameStateKey(Date.now()); // Force GameScreen re-mount
                     setView('game');
                 } else {
-                    alert('Tệp lưu không hợp lệ.');
+                    console.error('📁 Invalid save file structure:', loadedJson);
+                    alert('Tệp lưu không hợp lệ. Tệp phải chứa worldData, knownEntities và gameHistory.');
                 }
+            } else {
+                console.error('📁 File content is not a string:', typeof text);
+                alert('Không thể đọc nội dung tệp.');
             }
         } catch (error) {
-            console.error('Lỗi khi tải tệp:', error);
-            alert('Không thể đọc tệp lưu. Tệp có thể bị hỏng hoặc không đúng định dạng.');
+            console.error('📁 Error loading file:', error);
+            alert('Không thể đọc tệp lưu. Tệp có thể bị hỏng hoặc không đúng định dạng JSON.');
         }
     };
+    
+    reader.onerror = (error) => {
+        console.error('📁 FileReader error:', error);
+        alert('Lỗi khi đọc tệp.');
+    };
+    
     reader.readAsText(file);
   };
 
@@ -941,10 +1002,12 @@ Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, t�
               />;
           case 'game':
               return gameState ? <GameScreen 
+                key={`game-${gameStateKey}`} // Force re-mount when new game is loaded
                 initialGameState={gameState} 
                 onBackToMenu={navigateToMenu} 
                 keyRotationNotification={keyRotationNotification}
                 onClearNotification={() => setKeyRotationNotification(null)}
+                onLoadGameFromFile={handleLoadGameFromFile}
               /> : <MainMenu onStartNewAdventure={navigateToCreateWorld} onQuickPlay={quickPlay} hasLastWorldSetup={!!getLastWorldSetup()} onOpenApiSettings={openApiSettings} onLoadGameFromFile={handleLoadGameFromFile} isUsingDefaultKey={isUsingDefaultKey} onOpenChangelog={openChangelog} selectedAiModel={selectedAiModel}/>;
           case 'menu':
           default:

@@ -56,6 +56,25 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
         if (event.target) event.target.value = ''; // reset để chọn lại file
     };
 
+    const handleLoadButtonClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        } else {
+            // Fallback: create a temporary input
+            const tempInput = document.createElement('input');
+            tempInput.type = 'file';
+            tempInput.accept = '.json';
+            tempInput.onchange = (e) => {
+                const target = e.target as HTMLInputElement;
+                const file = target.files?.[0];
+                if (file) {
+                    onLoadGameFromFile(file);
+                }
+            };
+            tempInput.click();
+        }
+    };
+
     React.useEffect(() => {
         const handleClickOutside = () => {
             setShowGameMenu(false);
@@ -167,7 +186,7 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
                             className="hidden"
                         />
                         <button 
-                            onClick={() => fileInputRef.current?.click()}
+                            onClick={handleLoadButtonClick}
                             className="group flex items-center gap-2 px-3 py-2 rounded-lg 
                                     bg-slate-750 
                                     text-slate-200 dark:text-slate-300 

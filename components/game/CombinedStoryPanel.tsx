@@ -1,6 +1,6 @@
 // components/game/CombinedStoryPanel.tsx
 import React, { memo, useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import { SpinnerIcon } from '../Icons';
+import { SpinnerIcon, PinIcon } from '../Icons';
 import { OptimizedInteractiveText } from '../OptimizedInteractiveText';
 import { StatusPanelContent } from './StatusPanelContent';
 import { useOptimizedScroll } from '../hooks/useOptimizedScroll';
@@ -30,6 +30,7 @@ interface CombinedStoryPanelProps {
     onEntityClick: (entityName: string) => void;
     apiKeyError: string | null;
     className?: string;
+    contextHeader?: string;
 }
 
 const ITEM_OVERSCAN = 5;
@@ -102,7 +103,8 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
     knownEntities,
     onEntityClick,
     apiKeyError,
-    className = ''
+    className = '',
+    contextHeader = ''
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [virtualState, setVirtualState] = useState<VirtualScrollState>({
@@ -113,6 +115,130 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
     });
     const [itemHeights, setItemHeights] = useState<Map<string, number>>(new Map());
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Get appropriate icon for content
+    const getContentIcon = useCallback((content: string) => {
+        const lowerContent = content.toLowerCase();
+        
+        // Check for world name (first item, usually contains "Đạo Đồ" or similar)
+        if (lowerContent.includes('đạo đồ') || lowerContent.includes('thế giới') || lowerContent.includes('giới')) {
+            return '🌍';
+        }
+        
+        // Check for turn/round
+        if (lowerContent.includes('lượt') || lowerContent.includes('turn')) {
+            return '🎲';
+        }
+        
+        // Check for weather
+        if (lowerContent.includes('nắng') || lowerContent.includes('nóng') || lowerContent.includes('quang')) {
+            return '☀️';
+        }
+        if (lowerContent.includes('mưa') || lowerContent.includes('ẩm')) {
+            return '🌧️';
+        }
+        if (lowerContent.includes('mây') || lowerContent.includes('âm u')) {
+            return '☁️';
+        }
+        if (lowerContent.includes('gió') || lowerContent.includes('bão')) {
+            return '💨';
+        }
+        if (lowerContent.includes('tuyết') || lowerContent.includes('băng')) {
+            return '❄️';
+        }
+        if (lowerContent.includes('sương mù')) {
+            return '🌫️';
+        }
+        
+        // Check for location types based on the map legend
+        if (lowerContent.includes('rừng') || lowerContent.includes('forest')) {
+            return '🌲';
+        }
+        if (lowerContent.includes('núi') || lowerContent.includes('đồi') || lowerContent.includes('mountain')) {
+            return '🏔️';
+        }
+        if (lowerContent.includes('thành phố') || lowerContent.includes('đô thị')) {
+            return '🏙️';
+        }
+        if (lowerContent.includes('thị trấn') || lowerContent.includes('trấn')) {
+            return '🏘️';
+        }
+        if (lowerContent.includes('làng') || lowerContent.includes('mạc')) {
+            return '🏰';
+        }
+        if (lowerContent.includes('hang') || lowerContent.includes('động')) {
+            return '🕳️';
+        }
+        if (lowerContent.includes('sông') || lowerContent.includes('hồ') || lowerContent.includes('river') || lowerContent.includes('lake')) {
+            return '🌊';
+        }
+        if (lowerContent.includes('sa mạc') || lowerContent.includes('cát')) {
+            return '🏜️';
+        }
+        if (lowerContent.includes('đền') || lowerContent.includes('chùa') || lowerContent.includes('temple')) {
+            return '🏯';
+        }
+        if (lowerContent.includes('quân') || lowerContent.includes('căn cứ') || lowerContent.includes('pháo đài')) {
+            return '⚔️';
+        }
+        if (lowerContent.includes('cửa hàng') || lowerContent.includes('chợ')) {
+            return '🏪';
+        }
+        
+        // Default location icon
+        return '📍';
+    }, []);
+
+    // Parse context header to make locations clickable
+    const parseContextHeader = useCallback((header: string) => {
+        // Split by brackets and process each segment
+        const parts = header.split(/(\[[^\]]+\])/g);
+        
+        return parts.map((part, index) => {
+            // Check if this is a bracketed section
+            if (part.startsWith('[') && part.endsWith(']')) {
+                const content = part.slice(1, -1); // Remove brackets
+                const icon = getContentIcon(content);
+                
+                // Check what type of content this is
+                const isWorldName = content.toLowerCase().includes('đạo đồ') || content.toLowerCase().includes('thế giới');
+                const isLocation = !(/^\d+$/.test(content) || 
+                                   /^(Lượt|Ngày|Tháng|Năm|Giờ|\d+|Trời|Mây|Nắng|Mưa|Sáng|Chiều|Tối|Đêm)/i.test(content)) 
+                                   && !isWorldName;
+                
+                if (isLocation) {
+                    // Clickable location chip - GREEN with location pin
+                    return (
+                        <button
+                            key={index}
+                            onClick={() => onEntityClick(content)}
+                            className="inline-flex items-center gap-1.5 bg-purple-500/20 hover:bg-purple-500/40 text-green-400 hover:text-green-300 px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-105 border border-purple-400/30 hover:border-purple-300/50"
+                            title={`Xem chi tiết ${content}`}
+                        >
+                            <span>{icon}</span>
+                            <span className="text-sm font-bold">{content}</span>
+                            <PinIcon className="w-4 h-4 text-green-400" />
+                        </button>
+                    );
+                } else {
+                    // Non-clickable chip (world name, weather, turn, etc.)
+                    return (
+                        <div
+                            key={index}
+                            className="inline-flex items-center gap-1.5 bg-gray-500/20 text-gray-200 px-3 py-1.5 rounded-lg border border-gray-400/30"
+                        >
+                            <span>{icon}</span>
+                            <span className="text-sm font-bold">{content}</span>
+                        </div>
+                    );
+                }
+            } else if (part.trim()) {
+                // Plain text between brackets - usually just spaces
+                return null;
+            }
+            return null;
+        }).filter(Boolean);
+    }, [onEntityClick, getContentIcon]);
 
 
     // Create virtual items from story log
@@ -261,6 +387,17 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
                 </div>
             </div>
 
+            {/* Context Header - Sticky */}
+            {storyLog.length > 0 && contextHeader && (
+                <div className="flex-shrink-0 pt-4 pb-2">
+                    <div className="mx-4 p-3 bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-sm border border-purple-400/30 rounded-xl">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                            {parseContextHeader(contextHeader)}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Content - Story section takes full height */}
             <div className="flex-grow min-h-0 relative">
                 {!isAiReady ? (
@@ -290,9 +427,10 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
                 ) : (
                     <div
                         ref={scrollElementRef}
-                        className="h-full overflow-y-auto pr-2 p-4"
+                        className="h-full overflow-y-auto pr-2 px-4 pt-1 pb-4"
                         onScroll={onScroll}
                     >
+                        
                         <div className="space-y-4">
                             {visibleItems.map((item) => (
                                 <VirtualStoryItem

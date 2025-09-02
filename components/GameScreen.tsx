@@ -46,6 +46,7 @@ import { MemoryAnalytics } from './utils/MemoryAnalytics';
 import { useDebouncedCallback } from './hooks/useDebounce.ts';
 import { OptimizedInteractiveText } from './OptimizedInteractiveText.tsx';
 import { getThemeColors } from './utils/themeUtils';
+import { createContextHeader } from './utils/weatherGenerator';
 
 // Helper functions moved to extracted files
 
@@ -54,7 +55,8 @@ export const GameScreen: React.FC<{
     onBackToMenu: () => void,
     keyRotationNotification: string | null;
     onClearNotification: () => void;
-}> = ({ initialGameState, onBackToMenu, keyRotationNotification, onClearNotification }) => {
+    onLoadGameFromFile?: (file: File) => void;
+}> = ({ initialGameState, onBackToMenu, keyRotationNotification, onClearNotification, onLoadGameFromFile }) => {
     const { ai, isAiReady, apiKeyError, rotateKey, isUsingDefaultKey, userApiKeyCount, selectedModel, temperature, topK, topP } = useContext(AIContext);
     
     // Refs
@@ -1165,6 +1167,13 @@ export const GameScreen: React.FC<{
         playerInventory
     }), [pcEntity, pcStatuses, displayParty, playerInventory]);
     
+    // Create context header for each turn
+    const contextHeader = useMemo(() => {
+        const worldName = worldData.storyName || 'Thế giới bí ẩn';
+        const currentLocation = pcEntity?.location || 'Nơi không xác định';
+        return createContextHeader(worldName, currentLocation, turnCount);
+    }, [worldData.storyName, pcEntity?.location, turnCount]);
+    
     const themeColors = getThemeColors(gameSettings.themeColor);
     
     return (
@@ -1240,6 +1249,7 @@ export const GameScreen: React.FC<{
                 onInventory={() => setIsInventoryModalOpen(true)}
                 onAdmin={() => setIsAdminModalOpen(true)}
                 onManualCleanup={handleManualCleanup}
+                onLoadGameFromFile={onLoadGameFromFile || (() => console.log('onLoadGameFromFile not provided'))}
                 hasActiveQuests={quests.some(q => q.status === 'active')}
                 worldData={worldData}
                 gameTime={gameTime}
@@ -1256,6 +1266,7 @@ export const GameScreen: React.FC<{
                     isAiReady={isAiReady}
                     knownEntities={knownEntities}
                     onEntityClick={handleEntityClick}
+                    contextHeader={contextHeader}
                 />
                 <ActionPanel
                     isAiReady={isAiReady}
@@ -1283,6 +1294,7 @@ export const GameScreen: React.FC<{
                         knownEntities={knownEntities}
                         onEntityClick={handleEntityClick}
                         apiKeyError={apiKeyError}
+                        contextHeader={contextHeader}
                     />
                 </div>
                 <div className="flex-shrink-0 min-h-0" style={{ flexBasis: '40%' }}>

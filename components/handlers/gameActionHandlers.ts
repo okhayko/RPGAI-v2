@@ -965,7 +965,16 @@ Hãy gợi ý hành động:`;
             );
             
             storyLogManager.update(prev => [...prev, cleanStory]);
-            const newChoices = jsonResponse.choices || [];
+            let newChoices = jsonResponse.choices || [];
+            
+            // Limit choices to 4-6 (minimum 4, maximum 6)
+            if (newChoices.length > 6) {
+                console.log(`🎲 Limiting choices from ${newChoices.length} to 6`);
+                newChoices = newChoices.slice(0, 6);
+            } else if (newChoices.length < 4 && newChoices.length > 0) {
+                console.log(`🎲 Choice count (${newChoices.length}) is below minimum of 4, keeping as is`);
+            }
+            
             setChoices(newChoices);
             
             // Extract and enhance NPCs present data

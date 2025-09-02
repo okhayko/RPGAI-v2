@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import MenuButton from './MenuButton.tsx';
 import { PlayIcon, FileIcon, ChartIcon, SettingsIcon } from './Icons.tsx';
 
@@ -23,6 +23,25 @@ export const MainMenu: React.FC<{
         // Reset file input to allow selecting the same file again
         if (event.target) {
             event.target.value = '';
+        }
+    };
+
+    const handleLoadButtonClick = () => {
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        } else {
+            // Fallback: create a temporary input
+            const tempInput = document.createElement('input');
+            tempInput.type = 'file';
+            tempInput.accept = '.json';
+            tempInput.onchange = (e) => {
+                const target = e.target as HTMLInputElement;
+                const file = target.files?.[0];
+                if (file) {
+                    onLoadGameFromFile(file);
+                }
+            };
+            tempInput.click();
         }
     };
     
@@ -64,7 +83,7 @@ export const MainMenu: React.FC<{
           <MenuButton 
             text="Tải Game Từ Tệp (.json)" 
             icon={<FileIcon />}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={handleLoadButtonClick}
             colorClass="bg-blue-500"
             hoverClass="hover:bg-blue-600"
             focusClass="focus:ring-blue-400"
