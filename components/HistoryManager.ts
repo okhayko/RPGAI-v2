@@ -276,7 +276,7 @@ export class HistoryManager {
         endTurn: number,
         maxLength: number
     ): string {
-        let summary = `Lượt ${startTurn}-${endTurn}: `;
+        let summary = `Lượt: ${startTurn + 1}-${endTurn + 1}: `;
         
         if (actions.length > 0) {
             summary += `${actions.length} hành động quan trọng`;

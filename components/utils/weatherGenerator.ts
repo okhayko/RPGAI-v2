@@ -87,5 +87,5 @@ export function createContextHeader(
     turnCount: number
 ): string {
     const weather = generateWeather(turnCount, location);
-    return `[${worldName}] [${location}] [${weather}] [Lượt ${turnCount}]`;
+    return `[${worldName}] [${location}] [${weather}] [Lượt: ${turnCount + 1}]`;
 }

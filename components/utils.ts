@@ -158,22 +158,32 @@ export function getStatusColors(status: any) {
     switch (type) {
         case "buff":
             return {
-                border: "border-green-400",
+                border: "border-green-400/60",
                 bg: "bg-green-400/10",
-                text: "text-green-400"
+                text: "text-green-300",
+                hover: "hover:border-green-400/80 hover:bg-green-400/20 hover:shadow-green-400/25"
             };
         case "debuff":
-        case "injury": // 👈 thêm loại injury ở đây
+        case "injury":
             return {
-                border: "border-red-400",
+                border: "border-red-400/60", 
                 bg: "bg-red-400/10",
-                text: "text-red-400"
+                text: "text-red-300",
+                hover: "hover:border-red-400/80 hover:bg-red-400/20 hover:shadow-red-400/25"
+            };
+        case "neutral":
+            return {
+                border: "border-blue-400/60",
+                bg: "bg-blue-400/10", 
+                text: "text-blue-300",
+                hover: "hover:border-blue-400/80 hover:bg-blue-400/20 hover:shadow-blue-400/25"
             };
         default:
             return {
-                border: "border-gray-400",
+                border: "border-gray-400/60",
                 bg: "bg-gray-400/10",
-                text: "text-gray-300"
+                text: "text-gray-300",
+                hover: "hover:border-gray-400/80 hover:bg-gray-400/20 hover:shadow-gray-400/25"
             };
     }
 };

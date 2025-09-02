@@ -1397,6 +1397,7 @@ export const GameScreen: React.FC<{
                             handleSaveRules={handleSaveRules}
                             handleSaveRegexRules={handleSaveRegexRules || undefined}
                             handleAction={handleAction}
+                            setIsMapModalOpen={setIsMapModalOpen}
                             handleUpdateEntity={handleUpdateEntity}
                             setActiveEditItem={setActiveEditItem}
                             handleSaveEditedItem={handleSaveEditedItem}

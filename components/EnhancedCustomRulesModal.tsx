@@ -752,7 +752,7 @@ const EnhancedCustomRulesModalComponent: React.FC<EnhancedCustomRulesModalProps>
                 {(rule.activationCount || 0) > 0 && (
                     <div className="text-xs text-slate-600 dark:text-slate-400 border-t border-slate-300 dark:border-slate-600 pt-2">
                         Đã kích hoạt: {rule.activationCount} lần
-                        {rule.lastActivated && ` • Lần cuối: Lượt ${rule.lastActivated}`}
+                        {rule.lastActivated && ` • Lần cuối: Lượt: ${rule.lastActivated + 1}`}
                         {rule.tokenWeight && ` • Tokens ước tính: ${rule.tokenWeight}`}
                     </div>
                 )}

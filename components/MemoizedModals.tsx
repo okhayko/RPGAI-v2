@@ -85,6 +85,7 @@ interface MemoizedModalsProps {
     handleSaveRules: (rules: CustomRule[]) => void;
     handleSaveRegexRules?: (rules: RegexRule[]) => void;
     handleAction: (action: string) => void;
+    setIsMapModalOpen: (open: boolean) => void;
     handleUpdateEntity?: (entityName: string, updates: Partial<Entity>) => void;
     setActiveEditItem: (item: Entity | null) => void;
     handleSaveEditedItem: (originalItem: Entity, editedItem: Entity) => void;
@@ -527,6 +528,7 @@ const MemoizedModalsComponent = ({
     handleSaveRules,
     handleSaveRegexRules,
     handleAction,
+    setIsMapModalOpen,
     handleUpdateEntity,
     setActiveEditItem,
     handleSaveEditedItem,
@@ -589,6 +591,7 @@ const MemoizedModalsComponent = ({
                 statuses={statuses} 
                 onStatusClick={handleStatusClick}
                 onLocationAction={handleAction}
+                onMapOpen={() => setIsMapModalOpen(true)}
                 worldData={worldData}
                 onEditSkill={(skill) => {
                     setActiveEditSkill(skill);

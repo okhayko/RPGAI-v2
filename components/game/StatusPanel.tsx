@@ -61,6 +61,7 @@ interface StatusPanelProps {
     onEntityClick: (entityName: string) => void;
     onStatusClick: (status: Status) => void;
     onDeleteStatus: (statusName: string, entityName: string) => void;
+    onDiscardItem?: (item: Entity) => void;
     className?: string;
 }
 
@@ -82,9 +83,26 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
     onEntityClick,
     onStatusClick,
     onDeleteStatus,
+    onDiscardItem,
     className = ''
 }) => {
     const [activeTab, setActiveTab] = useState<'character' | 'party' | 'npcs' | 'quests'>('character');
+    const [expandedQuests, setExpandedQuests] = useState<Set<number>>(new Set(quests.map((_, index) => index)));
+    const [itemToDiscard, setItemToDiscard] = useState<Entity | null>(null);
+    const [statusToDelete, setStatusToDelete] = useState<{status: Status, entityName: string} | null>(null);
+
+    // Toggle quest expansion
+    const toggleQuestExpansion = (questIndex: number) => {
+        setExpandedQuests(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(questIndex)) {
+                newSet.delete(questIndex);
+            } else {
+                newSet.add(questIndex);
+            }
+            return newSet;
+        });
+    };
 
     // Convert NPCPresent data to Entity format for consistency with existing logic
     const presentNPCs = useMemo(() => {
@@ -136,25 +154,25 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
     const tabs: TabProps[] = useMemo(() => [
         {
             id: 'character',
-            label: 'Nhân vật',
+            label: 'Nhân Vật',
             icon: '👤',
             count: pcStatuses.length + playerInventory.length
         },
         {
             id: 'party',
-            label: 'Đồng đội',
+            label: 'Đồng Đội',
             icon: '🤝',
             count: displayParty.length
         },
         {
             id: 'npcs',
-            label: 'NPC hiện diện',
+            label: 'NPC Hiện Diện',
             icon: '👥',
             count: presentNPCs.length
         },
         {
             id: 'quests',
-            label: 'Nhiệm vụ',
+            label: 'Nhiệm Vụ',
             icon: '📋',
             count: quests.length
         }
@@ -306,7 +324,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                     const masteryColors = getMasteryColors(skill);
                                     return (
                                         <div key={index} 
-                                             className={`bg-white/5 border-2 ${masteryColors.border} rounded-lg p-2 cursor-pointer ${masteryColors.hover} transition-colors`}
+                                             className={`bg-white/5 border-2 ${masteryColors.border} rounded-lg p-2 cursor-pointer ${masteryColors.hover} transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:-translate-y-0.5`}
                                              onClick={() => onEntityClick(skill)}>
                                             <span className={`text-sm text-white/90 ${masteryColors.text} transition-colors block truncate`}>{skill}</span>
                                         </div>
@@ -325,7 +343,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                     const masteryColors = getMasteryColors(skill);
                                     return (
                                         <div key={index} 
-                                             className={`bg-white/5 border-2 ${masteryColors.border} rounded-lg p-2 cursor-pointer ${masteryColors.hover} transition-colors`}
+                                             className={`bg-white/5 border-2 ${masteryColors.border} rounded-lg p-2 cursor-pointer ${masteryColors.hover} transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:-translate-y-0.5`}
                                              onClick={() => onEntityClick(skill)}>
                                             <span className={`text-sm text-white/90 ${masteryColors.text} transition-colors block truncate`}>{skill}</span>
                                         </div>
@@ -349,17 +367,15 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
   {pcStatuses.length > 0 ? (
     <div className="space-y-2">
       {pcStatuses.map((status, index) => {
-        const { border, bg, text } = getStatusColors(status); // ✅ dùng hàm gộp
+        const { border, bg, text, hover } = getStatusColors(status); // ✅ dùng hàm gộp với hover
         return (
           <div 
             key={index} 
-            className={`group rounded-lg p-3 transition-colors border-2 ${border} ${bg}`}
+            className={`group rounded-lg p-3 transition-all duration-300 border-2 cursor-pointer ${border} ${bg} ${hover} hover:scale-[1.02] hover:shadow-lg hover:-translate-y-0.5`}
+            onClick={() => onStatusClick(status)}
           >
             <div className="flex items-start justify-between">
-              <div 
-                className="flex-grow cursor-pointer" 
-                onClick={() => onStatusClick(status)}
-              >
+              <div className="flex-grow">
                 <h5 className={`text-base font-bold mb-1 ${text}`}>
                   {status.name}
                 </h5>
@@ -407,16 +423,26 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                         <div className="grid grid-cols-1 gap-2">
                             {playerInventory.map((item, index) => (
                                 <div key={index} 
-                                     className="bg-white/5 border border-white/10 rounded-lg p-2 cursor-pointer hover:bg-white/10 transition-colors"
-                                     onClick={() => onEntityClick(item.name)}>
+                                     className="bg-white/5 border border-white/10 rounded-lg p-2 transition-colors">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-lg">📦</span>
-                                        <div className="flex-grow">
+                                        <span className="text-lg cursor-pointer" onClick={() => onEntityClick(item.name)}>📦</span>
+                                        <div className="flex-grow cursor-pointer" onClick={() => onEntityClick(item.name)}>
                                             <p className="text-sm font-medium text-white/90">{item.name}</p>
                                             {item.description && (
                                                 <p className="text-xs text-white/60 line-clamp-1">{item.description.substring(0, 50)}...</p>
                                             )}
                                         </div>
+                                        {onDiscardItem && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setItemToDiscard(item);
+                                                }}
+                                                className="px-3 py-1 text-xs font-medium border border-red-400 bg-red-500/20 text-red-300 rounded-md hover:bg-red-500/30 hover:scale-105 transition-all duration-200"
+                                            >
+                                                Vứt bỏ
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
@@ -471,7 +497,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                 <div className="flex flex-wrap gap-1">
                                     {member.skills.map((skill, skillIndex) => (
                                         <span key={skillIndex} 
-                                              className="text-xs bg-white/10 px-2 py-1 rounded cursor-pointer hover:bg-white/20 transition-colors"
+                                              className="text-xs bg-white/10 px-2 py-1 rounded cursor-pointer hover:bg-white/20 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:-translate-y-0.5"
                                               onClick={() => onEntityClick(skill)}>
                                             {skill}
                                         </span>
@@ -509,15 +535,15 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                         <details className="group">
                             <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors rounded-t-xl">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-gradient-to-r from-purple-500/30 to-pink-500/30 rounded-lg flex items-center justify-center text-xl">
+                                    <div className="w-10 h-10 bg-gradient-to-r from-purple-500/30 to-pink-500/30 rounded-lg flex items-center justify-center text-xl cursor-pointer transition-all duration-300 hover:scale-110 hover:shadow-lg hover:-translate-y-1 hover:bg-gradient-to-r hover:from-purple-400/40 hover:to-pink-400/40"
+                                         onClick={(e) => {
+                                             e.stopPropagation();
+                                             onEntityClick(npc.name);
+                                         }}>
                                         👤
                                     </div>
                                     <div>
-                                        <h4 className="text-base font-bold text-white group-hover:text-purple-300 transition-colors"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEntityClick(npc.name);
-                                            }}>
+                                        <h4 className="text-base font-bold text-white group-hover:text-purple-300 transition-colors">
                                             {npc.name}
                                         </h4>
                                         <p className="text-sm text-white/60 flex items-center gap-1">
@@ -620,64 +646,84 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
 
         return (
             <div className="space-y-4">
-                {quests.map((quest, index) => (
-                    <div key={index} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
-                        <div className="flex items-start justify-between mb-2">
-                            <h4 className="text-base font-bold text-white">{quest.title}</h4>
-                            <span className={`text-xs px-2 py-1 rounded-full ${
-                                quest.status === 'completed' ? 'bg-green-500/20 text-green-300' :
-                                quest.status === 'failed' ? 'bg-red-500/20 text-red-300' :
-                                'bg-yellow-500/20 text-yellow-300'
-                            }`}>
-                                {quest.status === 'completed' ? 'Hoàn thành' :
-                                 quest.status === 'failed' ? 'Thất bại' : 'Đang tiến hành'}
-                            </span>
-                        </div>
-
-                        {quest.description && (
-                            <div className="mb-3">
-                                <OptimizedInteractiveText
-                                    text={quest.description}
-                                    onEntityClick={onEntityClick}
-                                    knownEntities={knownEntities}
-                                />
+                {quests.map((quest, index) => {
+                    const isExpanded = expandedQuests.has(index);
+                    const isCompleted = quest.status === 'completed';
+                    return (
+                        <div key={index} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 transition-all duration-300 ease-in-out">
+                            <div className={`flex items-center justify-between cursor-pointer ${isExpanded ? 'mb-2' : 'mb-0'} transition-all duration-300`} onClick={() => toggleQuestExpansion(index)}>
+                                <div className="flex items-center gap-2 flex-grow">
+                                    <div className="text-white/60 transition-transform duration-300 ease-in-out" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                                        ▶
+                                    </div>
+                                    <h4 className={`text-base font-bold text-white ${isCompleted ? 'line-through text-white/60' : ''}`}>
+                                        {quest.title}
+                                    </h4>
+                                </div>
+                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                    quest.status === 'completed' ? 'bg-green-500/20 text-green-300' :
+                                    quest.status === 'failed' ? 'bg-red-500/20 text-red-300' :
+                                    'bg-yellow-500/20 text-yellow-300'
+                                }`}>
+                                    {quest.status === 'completed' ? 'Hoàn thành' :
+                                     quest.status === 'failed' ? 'Thất bại' : 'Đang tiến hành'}
+                                </span>
                             </div>
-                        )}
 
-                        {quest.objectives && quest.objectives.length > 0 && (
-                            <div className="mb-3">
-                                <p className="text-xs text-white/60 mb-2">Mục tiêu:</p>
-                                <ul className="space-y-1">
-                                    {quest.objectives.map((objective, objIndex) => (
-                                        <li key={objIndex} className="text-sm text-white/80 flex items-start gap-2">
-                                            <span className={`mt-1 ${objective.completed ? 'text-green-400' : 'text-blue-300'}`}>
-                                                {objective.completed ? '✓' : '•'}
-                                            </span>
-                                            <span className={objective.completed ? 'line-through text-white/60' : ''}>
-                                                {objective.description}
-                                            </span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
+                            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isExpanded ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'}`}>
+                                <div className="space-y-3 pt-2">
+                                    {quest.description && (
+                                        <div className="mb-3">
+                                            <div className="flex items-start gap-2">
+                                                <span className="text-lg flex-shrink-0">📜</span>
+                                                <div className="flex-grow">
+                                                    <OptimizedInteractiveText
+                                                        text={quest.description}
+                                                        onEntityClick={onEntityClick}
+                                                        knownEntities={knownEntities}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
 
-                        {quest.reward && (
-                            <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-3">
-                                <p className="text-xs text-yellow-400 mb-1 flex items-center gap-1">
-                                    🏆 Phần thưởng:
-                                </p>
-                                <div className="text-sm text-yellow-200">
-                                    <OptimizedInteractiveText
-                                        text={quest.reward}
-                                        onEntityClick={onEntityClick}
-                                        knownEntities={knownEntities}
-                                    />
+                                    {quest.objectives && quest.objectives.length > 0 && (
+                                        <div className="mb-3">
+                                            <p className="text-xs text-white/60 mb-2">Mục tiêu:</p>
+                                            <ul className="space-y-1">
+                                                {quest.objectives.map((objective, objIndex) => (
+                                                    <li key={objIndex} className="text-sm text-white/80 flex items-start gap-2">
+                                                        <span className={`mt-1 ${objective.completed ? 'text-green-400' : 'text-blue-300'}`}>
+                                                            {objective.completed ? '✓' : '•'}
+                                                        </span>
+                                                        <span className={`${objective.completed || isCompleted ? 'line-through text-white/60' : ''}`}>
+                                                            {objective.description}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {quest.reward && (
+                                        <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg p-3">
+                                            <p className="text-xs text-yellow-400 mb-1 flex items-center gap-1">
+                                                🏆 Phần thưởng:
+                                            </p>
+                                            <div className="text-sm text-yellow-200">
+                                                <OptimizedInteractiveText
+                                                    text={quest.reward}
+                                                    onEntityClick={onEntityClick}
+                                                    knownEntities={knownEntities}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
-                        )}
-                    </div>
-                ))}
+                        </div>
+                    );
+                })}
             </div>
         );
     };

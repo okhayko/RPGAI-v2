@@ -403,8 +403,15 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
             }
             
             console.log('📖 GenerateInitialStory: Response text received, length:', responseText.length);
-            parseApiResponseHandler(responseText);
-            setGameHistory(prev => [...prev, { role: 'model', parts: [{ text: responseText }] }]);
+            const initialParseSuccess = parseApiResponseHandler(responseText);
+            if (initialParseSuccess) {
+                console.log(`🎯 Initial story generated successfully`);
+                // Turn count for initial story will be 0 initially, so no need to increment
+                setGameHistory(prev => [...prev, { role: 'model', parts: [{ text: responseText }] }]);
+            } else {
+                console.log(`⚠️ Initial story parsing failed`);
+                setGameHistory(prev => [...prev, { role: 'model', parts: [{ text: responseText }] }]); // Still add to history for debugging
+            }
         } catch (error: any) {
             console.error("📖 GenerateInitialStory: Error occurred:", {
                 errorMessage: error.message,
@@ -433,6 +440,7 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
     const handleAction = async (action: string, currentGameState: SaveData) => {
         let originalAction = action.trim();
         let isNsfwRequest = false;
+        let finalResponseText = ''; // Will hold the final response text after potential retries
         
         const nsfwRegex = /\s+nsfw\s*$/i;
         if (nsfwRegex.test(originalAction)) {
@@ -664,24 +672,25 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                 const retryText = retryResponse.text?.trim() || '';
                 if (retryText) {
                     setGameHistory(prev => [...prev, optimizedUserEntry, { role: 'model', parts: [{ text: retryText }] }]);
-                    parseApiResponseHandler(retryText);
+                    // Use retryText for parsing instead of responseText
+                    finalResponseText = retryText;
                     console.log(`✅ [Turn ${currentGameState.turnCount}] Successfully generated unique response on retry`);
                 } else {
                     // Fallback to original response if retry fails
                     setGameHistory(prev => [...prev, optimizedUserEntry, { role: 'model', parts: [{ text: responseText }] }]);
-                    parseApiResponseHandler(responseText);
+                    finalResponseText = responseText;
                 }
                 }
             } else {
                 setGameHistory(prev => [...prev, optimizedUserEntry, { role: 'model', parts: [{ text: responseText }] }]);
-                parseApiResponseHandler(responseText);
+                finalResponseText = responseText;
             }
             
             // COT Research Logging - Save detailed analysis to game state
             const cotEndTime = Date.now();
             let parsedResponse = null;
             try {
-                parsedResponse = JSON.parse(responseText);
+                parsedResponse = JSON.parse(finalResponseText);
             } catch (e) {
                 // Response parsing failed, still log what we can
             }
@@ -700,11 +709,11 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                 duplicateDetected: isDuplicateResponse || false,
                 duplicateRetryCount: isDuplicateResponse ? (gameHistory.filter(h => h.parts[0].text.includes('lần thử lại')).length || 0) + 1 : 0,
                 finalResponseQuality: {
-                    storyLength: parsedResponse?.story?.length || responseText.length,
+                    storyLength: parsedResponse?.story?.length || finalResponseText.length,
                     choicesCount: parsedResponse?.choices?.length || 0,
                     storyTokens: parsedResponse?.story ? Math.ceil(parsedResponse.story.length * 1.2) : undefined,
-                    hasTimeElapsed: responseText.includes('TIME_ELAPSED'),
-                    hasChronicle: responseText.includes('CHRONICLE_TURN')
+                    hasTimeElapsed: finalResponseText.includes('TIME_ELAPSED'),
+                    hasChronicle: finalResponseText.includes('CHRONICLE_TURN')
                 },
                 performanceMetrics: {
                     responseTime: cotEndTime - cotStartTime,
@@ -724,10 +733,17 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                 performanceMs: cotResearchEntry.performanceMetrics.responseTime
             });
 
-            setTurnCount(prev => {
-                const newTurn = prev + 1;
-                return newTurn;
-            }); 
+            // Only increment turn count after successful story generation and parsing
+            const parseSuccess = parseApiResponseHandler(finalResponseText);
+            if (parseSuccess) {
+                setTurnCount(prev => {
+                    const newTurn = prev + 1;
+                    console.log(`🎯 Turn count successfully incremented to ${newTurn} after successful story generation`);
+                    return newTurn;
+                });
+            } else {
+                console.log(`⚠️ Turn count NOT incremented due to parsing/generation failure`);
+            } 
         } catch (error: any) {
             console.error("Error continuing story:", error);
             
@@ -799,14 +815,14 @@ Hãy gợi ý hành động:`;
         }
     };
 
-    const parseApiResponseHandler = (text: string) => {
+    const parseApiResponseHandler = (text: string): boolean => {
         try {
             // Check if response is empty or whitespace only
             if (!text || text.trim().length === 0) {
                 console.error("Empty AI response received");
                 storyLogManager.update(prev => [...prev, "Lỗi: AI trả về phản hồi trống. Hãy thử lại."]);
                 setChoices([]);
-                return;
+                return false;
             }
             
             // Clean the response text while preserving COT reasoning
@@ -842,7 +858,7 @@ Hãy gợi ý hành động:`;
                 console.error("No valid JSON found in response");
                 storyLogManager.update(prev => [...prev, "Lỗi: Không tìm thấy JSON hợp lệ trong phản hồi. Hãy thử lại."]);
                 setChoices([]);
-                return;
+                return false;
             }
             
             // Enhanced JSON parsing with error handling for unterminated strings
@@ -916,7 +932,7 @@ Hãy gợi ý hành động:`;
                     console.error("Failed to salvage response:", salvageError);
                     storyLogManager.update(prev => [...prev, `Lỗi: Không thể phân tích phản hồi AI. Chi tiết: ${parseError.message}`]);
                     setChoices([]);
-                    return;
+                    return false;
                 }
             }
             
@@ -947,7 +963,7 @@ Hãy gợi ý hành động:`;
                 console.error("Missing story field in JSON response");
                 storyLogManager.update(prev => [...prev, "Lỗi: Phản hồi thiếu nội dung câu chuyện. Hãy thử lại."]);
                 setChoices([]);
-                return;
+                return false;
             }
             
             let cleanStory = parseStoryAndTags(jsonResponse.story, true);
@@ -994,10 +1010,14 @@ Hãy gợi ý hành động:`;
             
             // Trigger cooldown if high token usage
             triggerHighTokenCooldown();
+            
+            // Return true to indicate successful parsing
+            return true;
         } catch (e) {
             console.error("Failed to parse AI response:", e, "Raw response:", text);
             storyLogManager.update(prev => [...prev, "Lỗi: AI trả về dữ liệu không hợp lệ. Hãy thử lại."]);
             setChoices([]);
+            return false;
         }
     };
 

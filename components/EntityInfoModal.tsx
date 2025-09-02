@@ -34,7 +34,8 @@ export const EntityInfoModal: React.FC<{
     onEditPC?: (pc: Entity) => void;
     onEditLocation?: (location: Entity) => void;
     onDeleteStatus?: (statusName: string, entityName: string) => void;
-}> = ({ entity, onClose, onUseItem, onLearnItem, onEquipItem, onUnequipItem, statuses, onStatusClick, onLocationAction, worldData, onEditSkill, onEditNPC, onEditPC, onEditLocation, onDeleteStatus }) => {
+    onMapOpen?: () => void;
+}> = ({ entity, onClose, onUseItem, onLearnItem, onEquipItem, onUnequipItem, statuses, onStatusClick, onLocationAction, worldData, onEditSkill, onEditNPC, onEditPC, onEditLocation, onDeleteStatus, onMapOpen }) => {
     if (!entity) return null;
 
     const typeColors: { [key in EntityType | string]: string } = {
@@ -470,7 +471,9 @@ export const EntityInfoModal: React.FC<{
                                 <button 
                                     onClick={() => {
                                         onClose();
-                                        // Close modal first, then trigger map view (user will see map with location highlighted)
+                                        if (onMapOpen) {
+                                            onMapOpen();
+                                        }
                                     }}
                                     className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors duration-200 flex items-center justify-center gap-2 text-sm"
                                 >

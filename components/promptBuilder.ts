@@ -737,7 +737,7 @@ export class EnhancedRAGSystem {
         try {
             const { year, month, day, hour, minute } = time;
             const timeStr = `Năm ${year || '?'} Tháng ${month || '?'} Ngày ${day || '?'}, ${hour || 0} giờ ${minute || 0} phút`;
-            return turnCount !== undefined ? `Thời gian: ${timeStr} (Lượt ${turnCount})` : timeStr;
+            return turnCount !== undefined ? `Thời gian: ${timeStr} (Lượt: ${turnCount + 1})` : timeStr;
         } catch {
             return 'Lỗi định dạng thời gian';
         }
@@ -1972,7 +1972,7 @@ Example JSON:
             
             prompt += `\n--- HÀNH ĐỘNG CỦA NGƯỜI CHƠI ---\n"${action}"\n`;
             prompt += `--- BỐI CẢNH HÀNH ĐỘNG ---\n`;
-            prompt += `Lượt: ${gameState.turnCount || 0} | Thời gian: ${this.formatGameTime(gameState.gameTime)} | ID: ${randomSeed}\n`;
+            prompt += `Lượt: ${(gameState.turnCount || 0) + 1} | Thời gian: ${this.formatGameTime(gameState.gameTime)} | ID: ${randomSeed}\n`;
             prompt += `Phân tích: ${actionAnalysis.type} - ${actionAnalysis.description}\n`;
             prompt += `Độ phức tạp: ${actionAnalysis.complexity} | Thời gian dự kiến: ${actionAnalysis.expectedDuration}\n`;
             if (actionAnalysis.involvedEntities.length > 0) {

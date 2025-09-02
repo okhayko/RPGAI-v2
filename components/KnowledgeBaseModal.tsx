@@ -266,7 +266,7 @@ const KnowledgeBaseModalComponent = ({ isOpen, onClose, pc, knownEntities, onEnt
                         <div className="bg-slate-200/50 dark:bg-slate-800/50 p-4 rounded-lg mb-6">
                             <h4 className="text-lg font-bold text-yellow-700 dark:text-yellow-400 flex items-center gap-2">
                                 <span className="w-5 h-5">{getIconForEntity(pc)}</span>
-                                {pc.name} - Lượt: {turnCount}
+                                {pc.name} - Lượt: {turnCount + 1}
                             </h4>
                             <p className="text-sm text-slate-700 dark:text-slate-300 italic mt-1">"{pc.description}"</p>
                             <p className="text-sm text-slate-600 dark:text-slate-400 mt-2"><b>Tính cách:</b> {pc.personality}</p>
