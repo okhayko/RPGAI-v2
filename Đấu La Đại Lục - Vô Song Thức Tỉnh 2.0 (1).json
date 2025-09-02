@@ -1,0 +1,154 @@
+    const generateInitialStory = async (
+        worldData: any,
+        knownEntities: any,
+        pcEntity: any,
+        initialHistory: GameHistoryEntry[]
+    ) => {
+        if (!ai) return;
+        setIsLoading(true);
+        
+        const finalPersonality = worldData.customPersonality || worldData.personalityFromList;
+        const writingStyleText = worldData.writingStyle === 'first_person' ? 'Ngôi thứ nhất - Nhân vật chính xưng "Ta/Tôi"' : 'Ngôi thứ hai - "Ngươi" là nhân vật chính';
+        const nsfwInstruction = worldData.allowNsfw ? 'Cho phép. Kích hoạt quy tắc nội dung 18+ của Quản Trò. Viết một cách trần trụi, bạo lực, tục tĩu và không giới hạn.' : 'Không, AI phải tránh các chủ đề và mô tả 18+.';
+        
+        const activeRules = customRules.filter(r => r.isActive);
+        let customRulesContext = '';
+        if (activeRules.length > 0) {
+            customRulesContext = `\n--- TRI THỨC & LUẬT LỆ TÙY CHỈNH (ĐANG ÁP DỤNG) ---\n${activeRules.map(r => `- ${r.content}`).join('\n')}\n--- KẾT THÚC ---\n`;
+        }
+
+        // BƯỚC 2: SỬ DỤNG LORE_CONCEPT ĐÃ TẠO
+        const conceptEntities = Object.values(knownEntities).filter((e: any) => e.type === 'concept');
+        let conceptContext = '';
+        if (conceptEntities.length > 0) {
+            conceptContext = `\n--- CÁC LORE_CONCEPT ĐÃ THIẾT LẬP ---\n${conceptEntities.map((c: any) => `• ${c.name}: ${c.description}`).join('\n')}\n--- KẾT THÚC ---\n`;
+        }
+
+        if (!pcEntity) return;
+
+        // Build skill information with mastery levels and descriptions
+        let skillsWithMastery = '';
+        if (pcEntity.learnedSkills && pcEntity.learnedSkills.length > 0) {
+            const skillDetails = pcEntity.learnedSkills.map((skillName: string) => {
+                const skillEntity = knownEntities[skillName];
+                if (skillEntity) {
+                    const mastery = skillEntity.mastery ? ` (${skillEntity.mastery})` : '';
+                    const description = skillEntity.description ? ` - ${skillEntity.description}` : '';
+                    return `${skillName}${mastery}${description}`;
+                }
+                return skillName;
+            });
+            skillsWithMastery = skillDetails.join('\n  • ');
+        }
+
+        const userPrompt = `${customRulesContext}${conceptContext}
+
+BẠN LÀ QUẢN TRÒ AI. Tạo câu chuyện mở đầu cho game RPG với yêu cầu sau:
+
+--- THÔNG TIN NHÂN VẬT CHÍNH ---
+Tên: ${pcEntity.name}
+Giới tính: ${pcEntity.gender}
+Tiểu sử: ${pcEntity.description}
+Tính cách: ${pcEntity.personality}${pcEntity.motivation ? `\n**ĐỘNG CƠ/MỤC TIÊU QUAN TRỌNG**: ${pcEntity.motivation}` : ''}${skillsWithMastery ? `\n**KỸ NĂNG KHỞI ĐẦU**:\n  • ${skillsWithMastery}` : ''}
+
+--- THÔNG TIN THẾ GIỚI ---
+Thế giới: ${worldData.worldName}
+Mô tả: ${worldData.worldDescription}
+Thời gian: Năm ${worldData.worldTime?.year || 1}, Tháng ${worldData.worldTime?.month || 1}, Ngày ${worldData.worldTime?.day || 1}
+Địa điểm bắt đầu: ${worldData.startLocation === 'Tuỳ chọn' ? worldData.customStartLocation : worldData.startLocation || 'Không xác định'}
+Phong cách viết: ${writingStyleText}
+Nội dung 18+: ${nsfwInstruction}
+
+--- YÊU CẦU VIẾT STORY ---
+1. **NGÔN NGỮ TUYỆT ĐỐI**: BẮT BUỘC 100% tiếng Việt. KHÔNG dùng tiếng Anh trừ tên riêng nước ngoài. Quan hệ nhân vật PHẢI tiếng Việt: "friend"→"bạn", "enemy"→"kẻ thù", "ally"→"đồng minh", "lover"→"người yêu"
+2. **CHIỀU DÀI**: Chính xác 300-400 từ, chi tiết và sống động  
+3. **SỬ DỤNG CONCEPT**: Phải tích hợp các LORE_CONCEPT đã thiết lập vào câu chuyện một cách tự nhiên
+4. **THIẾT LẬP BỐI CẢNH**: Tạo tình huống mở đầu thú vị, không quá drama${skillsWithMastery ? `\n5. **NHẮC ĐẾN KỸ NĂNG**: Phải đề cập hoặc thể hiện kỹ năng khởi đầu của nhân vật trong câu chuyện hoặc lựa chọn, chú ý đến mức độ thành thạo` : ''}${pcEntity.motivation ? `\n${skillsWithMastery ? '6' : '5'}. **PHẢN ÁNH ĐỘNG CƠ NHÂN VẬT**: Câu chuyện và lựa chọn phải liên quan đến động cơ/mục tiêu của nhân vật chính: "${pcEntity.motivation}"` : ''}
+${pcEntity.motivation && skillsWithMastery ? '7' : pcEntity.motivation || skillsWithMastery ? '6' : '5'}. **TIME_ELAPSED**: Bắt buộc sử dụng [TIME_ELAPSED: hours=0] 
+${pcEntity.motivation && skillsWithMastery ? '8' : pcEntity.motivation || skillsWithMastery ? '7' : '6'}. **THẺ LỆNH**: Tạo ít nhất 2-3 thẻ lệnh phù hợp (LORE_LOCATION, LORE_NPC, STATUS_APPLIED_SELF...)
+${pcEntity.motivation && skillsWithMastery ? '9' : pcEntity.motivation || skillsWithMastery ? '8' : '7'}. **LỰA CHỌN**: Tạo 4-6 lựa chọn hành động đa dạng và thú vị${pcEntity.motivation ? `, một số lựa chọn phải hướng tới việc thực hiện mục tiêu: "${pcEntity.motivation}"` : ''}${skillsWithMastery ? `, và một số lựa chọn cho phép sử dụng kỹ năng khởi đầu với mức độ thành thạo phù hợp` : ''}
+
+Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` và thể hiện rõ động cơ "${pcEntity.motivation}" của nhân vật` : ''}${skillsWithMastery ? `${pcEntity.motivation ? ', ' : ' và '}nhắc đến hoặc cho phép sử dụng kỹ năng khởi đầu với mức độ thành thạo` : ''}!
+
+**LƯU Ý CUỐI CÙNG**: Kiểm tra kỹ lưỡng toàn bộ output để đảm bảo 100% tiếng Việt, không có từ tiếng Anh nào!`;
+
+        const finalHistory: GameHistoryEntry[] = [{ role: 'user', parts: [{ text: userPrompt }] }];
+        setGameHistory(finalHistory);
+
+        try {
+            console.log('📖 GenerateInitialStory: Making AI request with model:', selectedModel);
+            console.log('📖 GenerateInitialStory: System instruction length:', systemInstruction.length);
+            console.log('📖 GenerateInitialStory: Initial history:', finalHistory);
+            
+            const response = await ai.models.generateContent({
+                model: selectedModel, 
+                contents: finalHistory,
+                config: { 
+                    systemInstruction: systemInstruction, 
+                    responseMimeType: "application/json", 
+                    responseSchema: responseSchema 
+                }
+            });
+            
+            console.log('📖 GenerateInitialStory: AI response received:', {
+                hasText: !!response.text,
+                textLength: response.text?.length || 0,
+                usageMetadata: response.usageMetadata
+            });
+            
+            const turnTokens = response.usageMetadata?.totalTokenCount || 0;
+            setCurrentTurnTokens(turnTokens);
+            setTotalTokens(prev => prev + turnTokens);
+
+            const responseText = response.text?.trim() || '';
+            
+            if (!responseText) {
+                console.error("📖 GenerateInitialStory: API returned empty response text", {
+                    responseMetadata: response.usageMetadata,
+                    model: selectedModel,
+                    responseObject: response
+                });
+                
+                // Check for specific error conditions
+                let errorMessage = "Lỗi: AI không thể tạo câu chuyện khởi đầu.";
+                
+                if (response.usageMetadata?.totalTokenCount === 0) {
+                    errorMessage += " Có thể do giới hạn token hoặc nội dung bị lọc.";
+                } else if (!response.usageMetadata) {
+                    errorMessage += " Có thể do lỗi kết nối mạng.";
+                }
+                
+                errorMessage += " Vui lòng thử tạo lại thế giới hoặc kiểm tra API key.";
+                
+                storyLogManager.update(prev => [...prev, errorMessage]);
+                setChoices([]);
+                return;
+            }
+            
+            console.log('📖 GenerateInitialStory: Response text received, length:', responseText.length);
+            parseApiResponseHandler(responseText);
+            setGameHistory(prev => [...prev, { role: 'model', parts: [{ text: responseText }] }]);
+        } catch (error: any) {
+            console.error("📖 GenerateInitialStory: Error occurred:", {
+                errorMessage: error.message,
+                errorString: error.toString(),
+                errorStack: error.stack,
+                errorType: typeof error,
+                isUsingDefaultKey,
+                userApiKeyCount
+            });
+            
+            if (!isUsingDefaultKey && userApiKeyCount > 1 && error.toString().includes('429')) {
+                console.log("📖 GenerateInitialStory: Rate limit detected, rotating key...");
+                rotateKey();
+                storyLogManager.update(prev => [...prev, "**⭐ Lỗi giới hạn yêu cầu. Đã tự động chuyển sang API Key tiếp theo. Vui lòng thử lại hành động của bạn. ⭐**"]);
+                setChoices(rehydratedChoices);
+            } else {
+                console.error("📖 GenerateInitialStory: Non-rate-limit error, showing error message");
+                storyLogManager.set(["Có lỗi xảy ra khi bắt đầu câu chuyện. Vui lòng thử lại.", `Chi tiết lỗi: ${error.message || error.toString()}`]);
+            }
+        } finally {
+            console.log("📖 GenerateInitialStory: Cleaning up, setting loading false");
+            setIsLoading(false);
+        }
+    };
