@@ -1,0 +1,97 @@
+- Làng mạc
+Thanh Hà Thôn
+Vân Thủy Thôn
+Hạ Dương Thôn
+Trúc Yên Thôn
+Liễu Mộc Thôn
+
+- Thị trấn
+Bích Thủy Trấn
+Vân Khê Trấn
+Thanh Liên Trấn
+Hồng Vũ Trấn
+Phong Hạc Trấn
+
+- Thành phố
+Vạn Kiếm Thành
+Hạo Dương Thành
+Thiên Tường Thành
+Trúc Ngọc Thành
+Hồng Quang Thành
+
+- Thủ đô
+Thiên Long Đế Đô
+Vĩnh Xương Đế Thành
+Hạo Thiên Đế Đô
+Kim Quang Đế Thành
+Nguyệt Hoa Đế Đô
+
+- Tông môn/Gia tộc
+Vân Hải Tông
+Thiên Kiếm Môn
+Cửu Hoa Cốc
+Thanh Ngọc Phái
+Huyền Vũ Thế Gia
+
+- Cửa hàng
+Linh Dược Các
+Pháp Bảo Phường
+Tiên Thảo Trai
+Trân Bảo Các
+Vạn Bảo Trai
+
+- Quán trọ/Tửu điếm
+Hồng Mai Tửu Quán
+Bích Thủy Quán Trọ
+Vân Hải Tửu Lâu
+Thanh Phong Quán Trọ
+Hạo Ca Tửu Điếm
+
+- Rừng rậm
+Vạn Trúc Lâm
+Hắc Phong Lâm
+Hồng Diệp Lâm
+U Minh Lâm
+Thanh Mộc Lâm
+
+- Núi non
+Thiên Kiếm Sơn
+Linh Vân Phong
+Huyền Vũ Sơn
+Thái Hòa Phong
+Cửu Long Sơn
+
+- Hang động
+Bích Long Động
+Hàn Ngọc Động
+Hỏa Diễm Động
+Huyền Thủy Động
+Vạn Xà Động
+
+- Hầm ngục/Bí cảnh
+Huyết Nguyệt Bí Cảnh
+Vạn Trận Huyền Cảnh
+U Minh Bí Cảnh
+Thiên La Huyết Ngục
+Linh Lung Bí Cảnh
+
+- Tàn tích
+Vạn Kiếm Tàn Tích
+Trầm Hỏa Cổ Thành
+Băng Phong Điện Tàn Tích
+Thiên Hạc Cung Tàn Tích
+Huyền Vũ Môn Tàn Tích
+
+- Sông/Hồ
+Thanh Liên Hồ
+Vân Thủy Giang
+Nguyệt Ảnh Hồ
+Hắc Long Giang
+Bích Ngọc Hồ
+
+- Địa danh đặc biệt
+Vô Tận Vực
+Trường Không Hải
+Thiên Hà Linh Giới
+Cửu U Tuyền
+Thái Hư Cảnh

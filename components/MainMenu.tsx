@@ -1,7 +1,6 @@
 
-import React, { useRef, useEffect } from 'react';
-import MenuButton from './MenuButton.tsx';
-import { PlayIcon, FileIcon, ChartIcon, SettingsIcon } from './Icons.tsx';
+import React, { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 
 export const MainMenu: React.FC<{ 
     onStartNewAdventure: () => void; 
@@ -14,6 +13,9 @@ export const MainMenu: React.FC<{
     selectedAiModel: string;
 }> = ({ onStartNewAdventure, onQuickPlay, hasLastWorldSetup, onOpenApiSettings, onLoadGameFromFile, isUsingDefaultKey, onOpenChangelog, selectedAiModel }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [hovered, setHovered] = useState<number | null>(null);
+    const [isMuted, setIsMuted] = useState(false);
 
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -44,73 +46,101 @@ export const MainMenu: React.FC<{
             tempInput.click();
         }
     };
+
+    const toggleMute = () => {
+        if (videoRef.current) {
+            videoRef.current.muted = !isMuted;
+            setIsMuted(!isMuted);
+        }
+    };
+
+    // Create menu items array with functions
+    const menuItems = [
+        { text: "Tạo Thế Giới Mới", onClick: onStartNewAdventure },
+        ...(hasLastWorldSetup && onQuickPlay ? [{ text: "Chơi Ngay", onClick: onQuickPlay }] : []),
+        { text: "Tải Game Từ Tệp (.json)", onClick: handleLoadButtonClick },
+        { text: "Xem Cập Nhật Game", onClick: onOpenChangelog },
+        { text: "Thiết Lập API Key", onClick: onOpenApiSettings }
+    ];
     
     return (
-      <div className="bg-white/80 dark:bg-[#1f2238]/80 backdrop-blur-md border border-slate-300 dark:border-slate-700 p-8 rounded-2xl shadow-xl max-w-lg w-full">
-        <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileSelect}
-            accept=".json"
-            className="hidden"
+      <div className="relative w-screen h-screen overflow-hidden">
+        {/* Video background */}
+        <video
+          ref={videoRef}
+          className="absolute inset-0 w-full h-full object-cover"
+          src="https://dl.dropboxusercontent.com/scl/fi/tuw5q6iz0rlfvfs5s8esz/0907.mp4?rlkey=lif00z2b6ugxkzo3wz1ypuz3k"
+          autoPlay
+          loop
+          muted
         />
-        <header className="text-center mb-10">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-wider text-slate-900 dark:text-white">
-            <span className="dark:text-purple-400">HÃY VIẾT LÊN </span>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-orange-400">CÂU TRUYỆN CỦA BẠN</span>
-          </h1>
-        </header>
-        
-        <main className="flex flex-col items-center space-y-4">
-          <MenuButton 
-            text="Tạo Thế Giới Mới" 
-            icon={<PlayIcon />}
-            onClick={onStartNewAdventure}
-            colorClass="bg-gradient-to-r from-purple-600 via-pink-500 to-red-500"
-            hoverClass="hover:from-purple-700 hover:via-pink-600 hover:to-red-600"
-            focusClass="focus:ring-pink-500"
+        <div className="absolute inset-0 bg-black/25" />
+
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept=".json"
+          className="hidden"
+        />
+
+        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen">
+          {/* Logo */}
+          <img
+            src="https://i.imgur.com/6MoKnRw.png"
+            alt="Game Logo"
+            className="w-[320px] md:w-[420px] drop-shadow-[0_0_20px_rgba(255,230,150,0.7)] mb-12"
           />
-          {hasLastWorldSetup && onQuickPlay && (
-            <MenuButton 
-              text="Chơi Ngay" 
-              icon={<PlayIcon />}
-              onClick={onQuickPlay}
-              colorClass="bg-gradient-to-r from-emerald-500 to-teal-600"
-              hoverClass="hover:from-emerald-600 hover:to-teal-700"
-              focusClass="focus:ring-emerald-500"
-            />
-          )}
-          <MenuButton 
-            text="Tải Game Từ Tệp (.json)" 
-            icon={<FileIcon />}
-            onClick={handleLoadButtonClick}
-            colorClass="bg-blue-500"
-            hoverClass="hover:bg-blue-600"
-            focusClass="focus:ring-blue-400"
-          />
-          <MenuButton 
-            text="Xem Cập Nhật Game" 
-            icon={<ChartIcon />}
-            onClick={onOpenChangelog}
-            colorClass="bg-green-500"
-            hoverClass="hover:bg-green-600"
-            focusClass="focus:ring-green-400"
-          />
-           <MenuButton 
-            text="Thiết Lập API Key" 
-            icon={<SettingsIcon />}
-            onClick={onOpenApiSettings}
-            colorClass="bg-slate-700"
-            hoverClass="hover:bg-slate-600"
-            focusClass="focus:ring-slate-500"
-          />
-        </main>
-        
-        <footer className="mt-6 text-center">
-          <p className="text-xs text-slate-600 dark:text-slate-400">
-            Model AI hiện tại: <span className="font-semibold text-slate-700 dark:text-slate-300">{selectedAiModel}</span>
-          </p>
-        </footer>
+          
+          {/* Nút âm thanh tròn nhỏ */}
+          <button
+            onClick={toggleMute}
+            className="w-10 h-10 mb-3 rounded-full bg-black/60 border border-yellow-300 flex items-center justify-center text-yellow-300 hover:bg-yellow-400/20 transition"
+          >
+            {isMuted ? "🔇" : "🔊"}
+          </button>
+          
+          {/* Menu buttons */}
+          <div className="flex flex-col gap-3 w-[500px] md:w-[650px] items-center p-0">
+            {menuItems.map((item, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: index * 0.15 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.97 }}
+                onMouseEnter={() => setHovered(index)}
+                onMouseLeave={() => setHovered(null)}
+                onClick={item.onClick}
+                className="relative w-[250px] h-[60px] flex items-center justify-center cursor-pointer"
+                style={{
+                  backgroundImage:
+                    "url('https://i.imgur.com/fvWzHiJ.png')",
+                  backgroundSize: "100% 100%",
+                  backgroundRepeat: "no-repeat",
+                }}
+              >
+                <span
+                  className={`text-lg md:text-xl font-semibold tracking-wide transition-all
+                    ${
+                      hovered === index
+                        ? "text-yellow-300 drop-shadow-[0_0_8px_rgba(255,230,150,0.8)]"
+                        : "text-yellow-200"
+                    }
+                  `}
+                >
+                  {item.text}
+                </span>
+              </motion.div>
+            ))}
+
+            <p className="text-sm text-gray-300 mt-4 italic">
+              Model AI hiện tại:{" "}
+              <span className="text-yellow-200">{selectedAiModel}</span>
+            </p>
+          </div>
+        </div>
       </div>
     );
 };

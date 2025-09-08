@@ -22,6 +22,10 @@ export interface Entity {
   thucLuc?: string; // For character power level assessment
   mastery?: string; // For skill mastery levels
   currentExp?: number; // For current experience points
+  skillExp?: number; // For skill-specific experience points
+  maxSkillExp?: number; // For skill experience cap at current mastery level
+  skillCapped?: boolean; // For breakthrough mechanic - skill at cap awaiting breakthrough
+  breakthroughEligible?: boolean; // For breakthrough mechanic - eligible for ✦Đột Phá✦ choice generation
   durability?: number;
   usable?: boolean;
   equippable?: boolean;
@@ -146,8 +150,10 @@ export interface Memory {
 }
 
 export interface QuestObjective {
+    id: string;                    // Unique identifier for objective
     description: string;
     completed: boolean;
+    completedAt?: number;          // Turn number when completed
 }
 
 export interface Quest {
@@ -158,6 +164,30 @@ export interface Quest {
     reward?: string;
     isMainQuest: boolean;
     status: 'active' | 'completed' | 'failed';
+    rewardsGranted?: boolean;        // Flag to prevent duplicate reward granting
+}
+
+export interface QuestLink {
+    questTitle: string;           // Title of the linked quest
+    objectiveId: string;          // ID of the objective this choice completes
+    objectiveDescription: string; // Description to display in choice
+}
+
+export interface ChoiceMetadata {
+    content: string;
+    time?: string;
+    successRate?: number;
+    risk?: 'Thấp' | 'Trung Bình' | 'Cao' | 'Cực Cao';
+    riskDescription?: string;
+    rewards?: string;
+    isNSFW?: boolean;
+    questLink?: QuestLink;        // Quest objective this choice completes
+    category?: string;            // Choice category (Hành động, Xã hội, etc.)
+    // Category support system fields
+    originalSuccessRate?: number; // Original success rate before support bonuses
+    originalRisk?: 'Thấp' | 'Trung Bình' | 'Cao' | 'Cực Cao'; // Original risk before support
+    supportIndicator?: string;    // Visual indicator for category support (e.g. 🔗)
+    supportTooltip?: string;      // Tooltip explaining the support
 }
 
 export interface GameHistoryEntry {

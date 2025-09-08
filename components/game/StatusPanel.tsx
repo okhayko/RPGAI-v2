@@ -1,9 +1,19 @@
 // components/game/StatusPanel.tsx
-import React, { memo, useState, useMemo, useContext, useEffect } from 'react';
+import React, { memo, useState, useMemo, useEffect, useRef } from 'react';
 import { OptimizedInteractiveText } from '../OptimizedInteractiveText';
-import { AIContext } from '../../App.tsx';
-import { getStatusColors } from "../utils.ts";
-import type { Entity, Status, Quest, KnownEntities, GameHistoryEntry, EntityType, NPCPresent } from '../types';
+import { getStatusColors, getIconForEntity } from "../utils.ts";
+import { ConfirmationModal } from '../ConfirmationModal';
+import { UserIcon } from '@heroicons/react/24/outline';
+import type { Entity, Status, Quest, KnownEntities, EntityType, NPCPresent } from '../types';
+
+// Helper function to normalize skill names (remove mastery level in parentheses)
+const normalizeName = (raw: string): string => {
+    return (raw ?? "")
+        .toLowerCase()
+        .replace(/\s*\(.*?\)\s*/g, "")  // Remove (Sơ Cấp), (Trung Cấp)...
+        .replace(/\s+/g, " ")
+        .trim();
+};
 
 // Mastery level color detection function
 const getMasteryColors = (skillName: string) => {
@@ -16,7 +26,7 @@ const getMasteryColors = (skillName: string) => {
             hover: 'hover:bg-blue-400/20 hover:border-blue-400/40',
             text: 'hover:text-blue-200'
         };
-    } else if (skill.includes('trung cấp') || skill.includes('tiểu thành')) {
+    } else if (skill.includes('trung cấp')) {
         return {
             border: 'border-green-300/60',
             hover: 'hover:bg-green-400/20 hover:border-green-400/40', 
@@ -87,9 +97,28 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
     className = ''
 }) => {
     const [activeTab, setActiveTab] = useState<'character' | 'party' | 'npcs' | 'quests'>('character');
-    const [expandedQuests, setExpandedQuests] = useState<Set<number>>(new Set(quests.map((_, index) => index)));
+    const [expandedQuests, setExpandedQuests] = useState<Set<number>>(
+        new Set(quests.map((_, index) => index).filter(index => quests[index].status !== 'completed'))
+    );
     const [itemToDiscard, setItemToDiscard] = useState<Entity | null>(null);
     const [statusToDelete, setStatusToDelete] = useState<{status: Status, entityName: string} | null>(null);
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+    const [showDeleteStatusConfirm, setShowDeleteStatusConfirm] = useState(false);
+    const [avatarImage, setAvatarImage] = useState<string | null>(null);
+    const avatarInputRef = useRef<HTMLInputElement>(null);
+
+    // Auto-collapse completed quests when quest status changes
+    useEffect(() => {
+        setExpandedQuests(prev => {
+            const newSet = new Set(prev);
+            quests.forEach((quest, index) => {
+                if (quest.status === 'completed' && newSet.has(index)) {
+                    newSet.delete(index); // Auto-collapse completed quests
+                }
+            });
+            return newSet;
+        });
+    }, [quests]);
 
     // Toggle quest expansion
     const toggleQuestExpansion = (questIndex: number) => {
@@ -103,6 +132,82 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
             return newSet;
         });
     };
+
+    // Handle discard item confirmation
+    const handleDiscardConfirm = () => {
+        if (itemToDiscard && onDiscardItem) {
+            onDiscardItem(itemToDiscard);
+            setItemToDiscard(null);
+        }
+        setShowDiscardConfirm(false);
+    };
+
+    const handleDiscardCancel = () => {
+        setShowDiscardConfirm(false);
+        setItemToDiscard(null);
+    };
+
+    // Handle delete status confirmation
+    const handleDeleteStatusConfirm = () => {
+        if (statusToDelete) {
+            onDeleteStatus(statusToDelete.status.name, statusToDelete.entityName);
+            setStatusToDelete(null);
+        }
+        setShowDeleteStatusConfirm(false);
+    };
+
+    const handleDeleteStatusCancel = () => {
+        setShowDeleteStatusConfirm(false);
+        setStatusToDelete(null);
+    };
+
+    // Handle avatar upload
+    const handleAvatarUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file && file.type.startsWith('image/')) {
+            const imageUrl = URL.createObjectURL(file);
+            setAvatarImage(imageUrl);
+        }
+        // Reset input to allow same file selection again
+        if (event.target) {
+            event.target.value = '';
+        }
+    };
+
+    // Handle avatar click
+    const handleAvatarClick = () => {
+        avatarInputRef.current?.click();
+    };
+
+    // Handle keyboard navigation for avatar
+    const handleAvatarKeyDown = (event: React.KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handleAvatarClick();
+        }
+    };
+
+    // Helper function to resolve learned skills from knownEntities with current mastery levels
+    const resolveLearnedSkills = useMemo(() => {
+        if (!pcEntity?.learnedSkills) return [];
+        
+        return pcEntity.learnedSkills.map(skillName => {
+            // Normalize the skill name to find the actual skill entity
+            const normalizedSkillName = normalizeName(skillName);
+            const actualSkill = Object.values(knownEntities).find(entity => 
+                entity.type === 'skill' && 
+                normalizeName(entity.name) === normalizedSkillName
+            );
+            
+            if (actualSkill?.mastery) {
+                // Return the skill name with current mastery level
+                return `${actualSkill.name} (${actualSkill.mastery})`;
+            }
+            
+            // Fall back to original name if skill entity not found
+            return skillName;
+        });
+    }, [pcEntity?.learnedSkills, knownEntities]);
 
     // Convert NPCPresent data to Entity format for consistency with existing logic
     const presentNPCs = useMemo(() => {
@@ -174,9 +279,9 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
             id: 'quests',
             label: 'Nhiệm Vụ',
             icon: '📋',
-            count: quests.length
+            count: quests.filter(q => q.status !== 'completed').length
         }
-    ], [pcStatuses.length, playerInventory.length, displayParty.length, presentNPCs.length, quests.length]);
+    ], [pcStatuses.length, playerInventory.length, displayParty.length, presentNPCs.length, quests]);
 
     // Helper function to get fame color
     const getFameColor = (fame: string): string => {
@@ -197,6 +302,11 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
         return value.toLocaleString().replace(/,$/, '');
     };
 
+    // Function to get contextual icon for items using GameIcons system
+    const getItemIcon = (item: Entity): React.ReactNode => {
+        return getIconForEntity(item);
+    };
+
     // Render character sheet content
     const renderCharacterSheet = () => {
         if (!pcEntity) {
@@ -212,10 +322,68 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
             <div className="space-y-4">
                 {/* Basic Info */}
                 <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4">
+                    {/* Hidden file input */}
+                    <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarUpload}
+                        className="hidden"
+                        aria-label="Tải lên ảnh đại diện"
+                    />
+                    
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-gradient-to-r from-blue-500/30 to-purple-500/30 rounded-xl flex items-center justify-center text-2xl">
-                                👤
+                            {/* Clickable Avatar */}
+                            <div 
+                                className="w-20 h-20 md:w-24 md:h-24 relative cursor-pointer hover:scale-110 transition-all duration-300 group overflow-visible"
+                                onClick={handleAvatarClick}
+                                onKeyDown={handleAvatarKeyDown}
+                                tabIndex={0}
+                                role="button"
+                                aria-label="Nhấn để thay đổi ảnh đại diện"
+                                title="Nhấn để tải lên ảnh đại diện"
+                            >
+                                {/* Avatar Background */}
+                                <div 
+                                    className="bg-gradient-to-r from-blue-500/30 to-purple-500/30 rounded-full shadow-lg flex items-center justify-center text-2xl overflow-hidden"
+                                    style={{
+                                        width: '75%',
+                                        height: '75%',
+                                        position: 'absolute',
+                                        top: '12.5%',
+                                        left: '12.5%',
+                                        transform: 'translateY(6px)' // Điều chỉnh vị trí trong viền
+                                    }}
+                                >
+                                    {avatarImage ? (
+                                        <img 
+                                            src={avatarImage} 
+                                            alt="Avatar" 
+                                            className="w-full h-full object-cover rounded-full"
+                                            onError={() => setAvatarImage(null)}
+                                        />
+                                    ) : (
+                                        <UserIcon className="w-8 h-8 md:w-10 md:h-10 text-white/80 group-hover:text-white transition-colors" />
+                                    )}
+                                </div>
+                                
+                                {/* Avatar Border Overlay - Full size để không bị cắt */}
+                                <div 
+                                    className="absolute pointer-events-none bg-no-repeat bg-center inset-0"
+                                    style={{ 
+                                        zIndex: 1,
+                                        backgroundImage: 'url("avatar_border.png")',
+                                        backgroundSize: 'contain',
+                                        width: '100%',
+                                        height: '100%'
+                                    }}
+                                />
+                                
+                                {/* Upload indicator on hover */}
+                                <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center" style={{ zIndex: 2 }}>
+                                    <span className="text-white text-xs font-medium">📸</span>
+                                </div>
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-white cursor-pointer hover:text-blue-300 transition-colors"
@@ -316,11 +484,11 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                     </h4>
                     
                     {/* Learned Skills */}
-                    {pcEntity.learnedSkills && pcEntity.learnedSkills.length > 0 ? (
+                    {resolveLearnedSkills.length > 0 ? (
                         <div className="mb-4">
                             <p className="text-xs text-white/60 mb-2">Kỹ năng đã học:</p>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                                {pcEntity.learnedSkills.map((skill, index) => {
+                                {resolveLearnedSkills.map((skill, index) => {
                                     const masteryColors = getMasteryColors(skill);
                                     return (
                                         <div key={index} 
@@ -353,7 +521,7 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                         </div>
                     )}
 
-                    {(!pcEntity.learnedSkills || pcEntity.learnedSkills.length === 0) && 
+                    {resolveLearnedSkills.length === 0 && 
                      (!pcEntity.skills || pcEntity.skills.length === 0) && (
                         <p className="text-sm text-white/60 italic">Chưa học được kỹ năng nào.</p>
                     )}
@@ -380,7 +548,10 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                   {status.name}
                 </h5>
                 {status.description && (
-                  <p className="text-xs text-white/60">{status.description}</p>
+                  <p className="text-xs text-white/60 italic mb-1">{status.description}</p>
+                )}
+                {status.effects && (
+                  <p className="text-xs text-white/60">{status.effects}</p>
                 )}
                 {status.turns !== undefined && (
                   <p className="text-xs text-blue-300 mt-1">Còn lại: {status.turns} lượt</p>
@@ -392,9 +563,10 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDeleteStatus(status.name, status.owner || 'pc');
+                  setStatusToDelete({ status: status, entityName: status.owner || 'pc' });
+                  setShowDeleteStatusConfirm(true);
                 }}
-                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 transition-all ml-2"
+                className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-300 hover:scale-110 transition-all ml-2 duration-200"
                 title="Xóa trạng thái"
               >
                 ✕
@@ -423,13 +595,16 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                         <div className="grid grid-cols-1 gap-2">
                             {playerInventory.map((item, index) => (
                                 <div key={index} 
-                                     className="bg-white/5 border border-white/10 rounded-lg p-2 transition-colors">
+                                     className="bg-white/5 border border-white/10 rounded-lg p-2 hover:bg-white/10 hover:border-white/20 hover:scale-[1.02] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 group">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-lg cursor-pointer" onClick={() => onEntityClick(item.name)}>📦</span>
+                                        <div className="w-5 h-5 text-purple-400 cursor-pointer transition-transform duration-300 group-hover:scale-110" 
+                                              onClick={() => onEntityClick(item.name)}>
+                                            {getItemIcon(item)}
+                                        </div>
                                         <div className="flex-grow cursor-pointer" onClick={() => onEntityClick(item.name)}>
-                                            <p className="text-sm font-medium text-white/90">{item.name}</p>
+                                            <p className="text-sm font-medium text-white/90 group-hover:text-white transition-colors">{item.name}</p>
                                             {item.description && (
-                                                <p className="text-xs text-white/60 line-clamp-1">{item.description.substring(0, 50)}...</p>
+                                                <p className="text-xs text-white/60 group-hover:text-white/70 line-clamp-1 transition-colors">{item.description.substring(0, 50)}...</p>
                                             )}
                                         </div>
                                         {onDiscardItem && (
@@ -437,8 +612,9 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     setItemToDiscard(item);
+                                                    setShowDiscardConfirm(true);
                                                 }}
-                                                className="px-3 py-1 text-xs font-medium border border-red-400 bg-red-500/20 text-red-300 rounded-md hover:bg-red-500/30 hover:scale-105 transition-all duration-200"
+                                                className="px-3 py-1 text-xs font-medium border border-red-400/60 bg-red-500/20 text-red-300 rounded-lg hover:bg-red-500/30 hover:border-red-400/80 hover:scale-105 transition-all duration-200"
                                             >
                                                 Vứt bỏ
                                             </button>
@@ -644,14 +820,25 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
             );
         }
 
+        // Sort quests: completed first, then unfinished
+        const sortedQuests = [...quests].sort((a, b) => {
+            if (a.status === 'completed' && b.status !== 'completed') return -1;
+            if (a.status !== 'completed' && b.status === 'completed') return 1;
+            return 0;
+        });
+
         return (
             <div className="space-y-4">
-                {quests.map((quest, index) => {
-                    const isExpanded = expandedQuests.has(index);
+                {sortedQuests.map((quest, sortedIndex) => {
+                    // Find original index for expansion state
+                    const originalIndex = quests.findIndex(q => q === quest);
+                    const isExpanded = expandedQuests.has(originalIndex);
                     const isCompleted = quest.status === 'completed';
                     return (
-                        <div key={index} className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl p-4 transition-all duration-300 ease-in-out">
-                            <div className={`flex items-center justify-between cursor-pointer ${isExpanded ? 'mb-2' : 'mb-0'} transition-all duration-300`} onClick={() => toggleQuestExpansion(index)}>
+                        <div key={originalIndex} className={`backdrop-blur-sm border border-white/10 rounded-xl p-4 transition-all duration-300 ease-in-out ${
+                            quest.status === 'completed' ? 'bg-green-500/20 border-green-400/30' : 'bg-yellow-500/20 border-yellow-400/30'
+                        }`}>
+                            <div className={`flex items-center justify-between cursor-pointer ${isExpanded ? 'mb-2' : 'mb-0'} transition-all duration-300`} onClick={() => toggleQuestExpansion(originalIndex)}>
                                 <div className="flex items-center gap-2 flex-grow">
                                     <div className="text-white/60 transition-transform duration-300 ease-in-out" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
                                         ▶
@@ -660,10 +847,10 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                         {quest.title}
                                     </h4>
                                 </div>
-                                <span className={`text-xs px-2 py-1 rounded-full ${
-                                    quest.status === 'completed' ? 'bg-green-500/20 text-green-300' :
-                                    quest.status === 'failed' ? 'bg-red-500/20 text-red-300' :
-                                    'bg-yellow-500/20 text-yellow-300'
+                                <span className={`text-xs px-2 py-1 rounded-full border ${
+                                    quest.status === 'completed' ? 'bg-green-500/20 text-green-300 border-green-400 border-2' :
+                                    quest.status === 'failed' ? 'bg-red-500/20 text-red-300 border-red-400' :
+                                    'bg-yellow-500/20 text-yellow-300 border-yellow-400'
                                 }`}>
                                     {quest.status === 'completed' ? 'Hoàn thành' :
                                      quest.status === 'failed' ? 'Thất bại' : 'Đang tiến hành'}
@@ -747,7 +934,11 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                                 <span className="text-lg">{tab.icon}</span>
                                 <span>{tab.label}</span>
                                 {tab.count !== undefined && (
-                                    <span className="bg-white/20 text-xs px-2 py-1 rounded-full">
+                                    <span className={`text-xs px-2 py-1 rounded-full ${
+                                        activeTab === tab.id
+                                            ? 'bg-white/80 text-black font-semibold shadow-md'
+                                            : 'bg-white/20 text-white/90'
+                                    }`}>
                                         {tab.count}
                                     </span>
                                 )}
@@ -766,6 +957,30 @@ export const StatusPanel: React.FC<StatusPanelProps> = memo(({
                     {activeTab === 'quests' && renderQuests()}
                 </div>
             </div>
+
+            {/* Discard Item Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showDiscardConfirm}
+                onClose={handleDiscardCancel}
+                onConfirm={handleDiscardConfirm}
+                title="Xác nhận vứt bỏ"
+                message={`Bạn có muốn xóa vật phẩm này không?${itemToDiscard ? ` "${itemToDiscard.name}"` : ''}`}
+                confirmText="Có"
+                cancelText="Hủy bỏ"
+                confirmButtonColor="blue"
+            />
+
+            {/* Delete Status Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showDeleteStatusConfirm}
+                onClose={handleDeleteStatusCancel}
+                onConfirm={handleDeleteStatusConfirm}
+                title="Xác nhận xóa trạng thái"
+                message={`Bạn có muốn xóa trạng thái này không?${statusToDelete ? ` "${statusToDelete.status.name}"` : ''}`}
+                confirmText="Có"
+                cancelText="Hủy bỏ"
+                confirmButtonColor="blue"
+            />
         </div>
     );
 });

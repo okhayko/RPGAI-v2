@@ -335,18 +335,33 @@ export const StoryPanel: React.FC<StoryPanelProps> = memo(({
 
                 {/* Scroll indicators and controls */}
                 {storyLog.length > 5 && (
-                    <div className="absolute top-4 right-4 flex flex-col gap-2">
-                        {/* Scroll to bottom button - always available */}
-                        <button
-                            onClick={scrollToBottom}
-                            className="bg-gradient-to-r from-purple-500/30 to-pink-500/30 hover:from-purple-500/40 hover:to-pink-500/40 backdrop-blur-xl border border-purple-400/40 text-white p-3 rounded-2xl shadow-2xl transition-all hover:scale-110 group"
-                            title="Cuộn xuống cuối"
-                        >
-                            <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                            </svg>
-                        </button>
-                    </div>
+                    <>
+                        {/* Desktop scroll button */}
+                        <div className="absolute bottom-0 left-0 hidden md:block">
+                            <button
+                                onClick={scrollToBottom}
+                                className="bg-purple-600/80 hover:bg-purple-600 backdrop-blur-xl border border-purple-400/40 text-white p-3 rounded-lg shadow-2xl transition-all hover:scale-110 group"
+                                title="Cuộn xuống cuối"
+                            >
+                                <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        {/* Mobile scroll button - larger, centered at bottom */}
+                        <div className="absolute bottom-2 right-1/2 transform translate-x-1/2 md:hidden z-50">
+                            <button
+                                onClick={scrollToBottom}
+                                className="bg-purple-600/90 hover:bg-purple-600 backdrop-blur-xl border-2 border-purple-400/60 text-white p-4 rounded-full shadow-2xl transition-all active:scale-95 group touch-manipulation"
+                                title="Cuộn xuống cuối"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </>
                 )}
 
                 {/* Scroll progress bar */}

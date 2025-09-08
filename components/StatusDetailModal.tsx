@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Status } from './types.ts';
-import { getStatusColors } from './utils.ts';
+import { getStatusColors, getGameMechanicsDescription } from './utils.ts';
 
 export const StatusDetailModal: React.FC<{ status: Status | null; onClose: () => void; }> = ({ status, onClose }) => {
     if (!status) return null;
@@ -23,7 +23,7 @@ export const StatusDetailModal: React.FC<{ status: Status | null; onClose: () =>
                 <div className="p-6 space-y-4 text-slate-700 dark:text-gray-300">
                     <div>
                         <p className="font-semibold text-slate-800 dark:text-gray-100 text-sm uppercase tracking-wider mb-1">Mô tả</p>
-                        <p className="italic text-base">"{status.description || 'Không có mô tả chi tiết.'}"</p>
+                        <p className="italic text-base">"{getGameMechanicsDescription(status) || 'Không có mô tả chi tiết.'}"</p>
                     </div>
                      <div className="border-t border-slate-200 dark:border-slate-700/60 mt-4 pt-4 space-y-3">
                         {status.effects && <p><strong className="font-semibold text-slate-800 dark:text-gray-100 w-32 inline-block">Hiệu ứng:</strong> {status.effects}</p>}

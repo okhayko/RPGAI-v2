@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Entity } from './types';
+import { ConfirmationModal } from './ConfirmationModal';
 
 export interface InventoryModalProps {
     isOpen: boolean;
@@ -23,11 +24,15 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
     onEditItem
 }) => {
     const [selectedItem, setSelectedItem] = useState<Entity | null>(null);
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+    const [itemToDiscard, setItemToDiscard] = useState<Entity | null>(null);
 
     // Reset selected item when modal opens/closes to ensure fresh state
     useEffect(() => {
         if (!isOpen) {
             setSelectedItem(null);
+            setShowDiscardConfirm(false);
+            setItemToDiscard(null);
         }
     }, [isOpen]);
 
@@ -63,6 +68,20 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
         if (item.description?.includes('hiếm') || item.description?.includes('quý')) return 'rare';
         if (item.description?.includes('phổ thông') || item.description?.includes('thường')) return 'common';
         return 'uncommon';
+    };
+
+    const handleDiscardConfirm = () => {
+        if (itemToDiscard && onDiscardItem) {
+            console.log(`🗑️ Inventory Modal: Discarding item "${itemToDiscard.name}"`);
+            onDiscardItem(itemToDiscard);
+            setSelectedItem(null);
+            setItemToDiscard(null);
+        }
+    };
+
+    const handleDiscardCancel = () => {
+        setShowDiscardConfirm(false);
+        setItemToDiscard(null);
     };
 
     const getQualityColor = (quality: string) => {
@@ -235,14 +254,10 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
 
                                 {onDiscardItem && (
                                     <button
-                                        className="px-3 py-2 sm:px-4 bg-red-600 hover:bg-red-500 text-white rounded-md font-semibold transition-colors text-sm sm:text-base"
+                                        className="px-3 py-2 sm:px-4 bg-red-600/80 hover:bg-red-600 border-2 border-red-500 text-white rounded-lg font-semibold transition-all duration-200 hover:scale-105 text-sm sm:text-base"
                                         onClick={() => {
-                                            if (window.confirm(`Bạn có chắc muốn vứt bỏ "${selectedItem.name}"?`)) {
-                                                console.log(`🗑️ Inventory Modal: Discarding item "${selectedItem.name}"`);
-                                                const itemToDiscard = selectedItem;
-                                                setSelectedItem(null); // Clear selection immediately
-                                                onDiscardItem(itemToDiscard);
-                                            }
+                                            setItemToDiscard(selectedItem);
+                                            setShowDiscardConfirm(true);
                                         }}
                                     >
                                         VỨT BỎ
@@ -272,6 +287,18 @@ export const InventoryModal: React.FC<InventoryModalProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* Discard Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showDiscardConfirm}
+                onClose={handleDiscardCancel}
+                onConfirm={handleDiscardConfirm}
+                title="Xác nhận vứt bỏ"
+                message={`Bạn có muốn xóa vật phẩm này không?${itemToDiscard ? ` "${itemToDiscard.name}"` : ''}`}
+                confirmText="Có"
+                cancelText="Hủy bỏ"
+                confirmButtonColor="blue"
+            />
         </div>
     );
 };

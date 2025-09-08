@@ -5,6 +5,15 @@ import { MemoryAnalytics } from './utils/MemoryAnalytics';
 import { ReferenceBasedRAG, type CompactRAGContext } from './utils/ReferenceBasedRAG';
 import { ruleActivationEngine, type ActivationContext } from './utils/RuleActivationEngine';
 
+// Helper function to normalize skill names (remove mastery level in parentheses)
+const normalizeName = (raw: string): string => {
+    return (raw ?? "")
+        .toLowerCase()
+        .replace(/\s*\(.*?\)\s*/g, "")  // Remove (Sơ Cấp), (Trung Cấp)...
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
 // Aggressive Token Management for 100k hard limit
 const TOKEN_CONFIG = {
     MAX_TOKENS_PER_TURN: 90000,  // 90k hard limit with 10k buffer
@@ -507,9 +516,13 @@ export class EnhancedRAGSystem {
             if (pc.realm) pcDetails.push(`Thực lực: ${pc.realm}`);
             if (pc.learnedSkills && pc.learnedSkills.length > 0) {
                 const skillsWithMastery = pc.learnedSkills.map(skillName => {
-                    const skillEntity = Object.values(gameState.knownEntities).find((e: any) => e.name === skillName && e.type === 'skill');
+                    // Normalize the skill name to find the actual skill entity
+                    const normalizedSkillName = normalizeName(skillName);
+                    const skillEntity = Object.values(gameState.knownEntities).find((e: any) => 
+                        e.type === 'skill' && normalizeName(e.name) === normalizedSkillName
+                    );
                     if (skillEntity && skillEntity.mastery) {
-                        return `${skillName} (${skillEntity.mastery})`;
+                        return `${skillEntity.name} (${skillEntity.mastery})`;
                     }
                     return skillName;
                 });
@@ -948,9 +961,13 @@ export class EnhancedRAGSystem {
         // Available skills suggestions
         if (pc.learnedSkills && pc.learnedSkills.length > 0) {
             const skillsWithMastery = pc.learnedSkills.map(skillName => {
-                const skillEntity = Object.values(gameState.knownEntities).find((e: any) => e.name === skillName && e.type === 'skill');
+                // Normalize the skill name to find the actual skill entity
+                const normalizedSkillName = normalizeName(skillName);
+                const skillEntity = Object.values(gameState.knownEntities).find((e: any) => 
+                    e.type === 'skill' && normalizeName(e.name) === normalizedSkillName
+                );
                 if (skillEntity && skillEntity.mastery) {
-                    return `${skillName} (${skillEntity.mastery})`;
+                    return `${skillEntity.name} (${skillEntity.mastery})`;
                 }
                 return skillName;
             });
@@ -1042,8 +1059,17 @@ export class EnhancedRAGSystem {
         if (pc?.learnedSkills && pc.learnedSkills.length > 0) {
             context += `\n**Sử dụng kỹ năng có sẵn:**\n`;
             const skills = pc.learnedSkills.slice(0, 3);
-            skills.forEach(skill => {
-                context += `• Tạo cơ hội sử dụng "${skill}"\n`;
+            skills.forEach(skillName => {
+                // Normalize the skill name to find the actual skill entity
+                const normalizedSkillName = normalizeName(skillName);
+                const skillEntity = Object.values(gameState.knownEntities).find((e: any) => 
+                    e.type === 'skill' && normalizeName(e.name) === normalizedSkillName
+                );
+                if (skillEntity && skillEntity.mastery) {
+                    context += `• Tạo cơ hội sử dụng "${skillEntity.name} (${skillEntity.mastery})"\n`;
+                } else {
+                    context += `• Tạo cơ hội sử dụng "${skillName}"\n`;
+                }
             });
         }
         
@@ -1449,9 +1475,13 @@ Tự hỏi bản thân:
             if (entity.motivation) details.push(`**MỤC TIÊU QUAN TRỌNG**: ${entity.motivation}`);
             if (entity.learnedSkills && entity.learnedSkills.length > 0) {
                 const skillsWithMastery = entity.learnedSkills.map(skillName => {
-                    const skillEntity = Object.values(gameState.knownEntities).find((e: any) => e.name === skillName && e.type === 'skill');
+                    // Normalize the skill name to find the actual skill entity
+                    const normalizedSkillName = normalizeName(skillName);
+                    const skillEntity = Object.values(gameState.knownEntities).find((e: any) => 
+                        e.type === 'skill' && normalizeName(e.name) === normalizedSkillName
+                    );
                     if (skillEntity && skillEntity.mastery) {
-                        return `${skillName} (${skillEntity.mastery})`;
+                        return `${skillEntity.name} (${skillEntity.mastery})`;
                     }
                     return skillName;
                 });
@@ -1844,6 +1874,32 @@ Tự hỏi bản thân:
 - Lựa chọn Bắt Buộc phải phù hợp thiết lập nhân vật của người chơi trừ các lựa chọn "chiến đấu"
 - Tránh các lựa chọn mang tính mệnh lệnh
 - Lựa chọn không được chứa thông tin mà nhân vật người chơi không biết. Mỗi lựa chọn tối đa 30 chữ.
+
+**🎯 LIÊN KẾT NHIỆM VỤ:**
+- **QUAN TRỌNG:** Khi có nhiệm vụ đang hoạt động, tạo lựa chọn liên quan đến hoàn thành mục tiêu nhiệm vụ
+- **Format bắt buộc cho lựa chọn nhiệm vụ:** Thêm dòng sau mô tả lựa chọn:
+  "Mục tiêu nhiệm vụ \"[Tên nhiệm vụ]\""
+- **Ví dụ:**
+  * "Đến Đại Sảnh Nội Môn để nhận nhiệm vụ (1 giờ)
+    Mục tiêu nhiệm vụ \"Nhiệm Vụ Đệ Tử Nội Môn Đầu Tiên\""
+  * "Tìm hiểu về phái Ma Giáo (2 giờ)
+    Mục tiêu nhiệm vụ \"Điều Tra Tà Giáo\""
+- **Nguyên tắc:** Chỉ liên kết với nhiệm vụ có mục tiêu chưa hoàn thành và phù hợp với tình huống hiện tại
+
+**✦ ĐỊNH DẠNG THỂ LOẠI LỰA CHỌN:**
+- **BẮT BUỘC:** Đặt thể loại ở đầu mỗi lựa chọn, bao bọc bằng ký hiệu ✦
+- **Format:** ✦[Thể loại]✦ [Nội dung lựa chọn] ([Thời gian])
+- **Các thể loại chính:**
+  * ✦Hành động✦ - Hành động chủ động, tấn công, di chuyển
+  * ✦Xã hội✦ - Trò chuyện, giao tiếp, thuyết phục
+  * ✦Thăm dò✦ - Khám phá, quan sát, tìm hiểu
+  * ✦Chiến đấu✦ - Đánh nhau trực tiếp, sử dụng kỹ năng chiến đấu
+  * ✦Chuyển cảnh✦ - Thay đổi địa điểm, di chuyển nhanh
+  * ✦Tua nhanh✦ - Bỏ qua thời gian, nghỉ ngơi
+- **Ví dụ:**
+  * ✦Hành động✦ Khởi hành đến Dãy Núi Hắc Phong ngay lập tức (6 giờ)
+  * ✦Xã hội✦ Trò chuyện với thương gia về tin tức địa phương (30 phút)
+  * ✦Thăm dò✦ Khám phá khu rừng gần đây để tìm manh mối (2 giờ)
 
 **🕒 BẮT BUỘC - HIỂN THỊ THỜI GIAN CHO MỖI LỰA CHỌN:**
 - **MỌI lựa chọn hành động PHẢI bao gồm thời gian ước tính trong dấu ngoặc đơn**

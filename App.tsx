@@ -12,6 +12,7 @@ import { InitializationProgress } from './components/InitializationProgress.tsx'
 import type { SaveData, Entity, AIContextType, FormData, CustomRule, KnownEntities } from './components/types.ts';
 import { CHANGELOG_DATA } from './components/data/changelog.ts';
 import { ReferenceIdGenerator } from './components/utils/ReferenceIdGenerator.ts';
+import { enhancedGenerateContent, enhancedWorldCreation } from './components/utils/RetryIntegration';
 
 // --- Hằng số ---
 export const DEFAULT_SYSTEM_INSTRUCTION = `BẠN LÀ QUẢN TRÒ (GM) AI. Nhiệm vụ: điều khiển trò chơi nhập vai văn bản, tuân thủ NGHIÊM NGẶT:
@@ -114,10 +115,11 @@ test
 \`[LORE_ITEM: name="Tên vật phẩm", description="Mô tả", usable=true, equippable=false, quantities=5, durability=100]\`
 
 4. **Kỹ năng mới:**
-\`[SKILL_LEARNED: name="Tên kỹ năng", description="Mô tả", mastery="Mức độ thành thạo nếu có", learner="Tên NPC (BẮT BUỘC khi NPC học)"]\`
+\`[SKILL_LEARNED: name="Tên kỹ năng", description="Mô tả", mastery="Mức độ thành thạo nếu có", learner="Tên nhân vật (LUÔN BẮT BUỘC)"]\`
 **⚠️ QUAN TRỌNG:** 
-- Khi NPC học kỹ năng: **PHẢI** có \`learner="Tên NPC"\`
-- Khi PC học kỹ năng: Có thể bỏ qua \`learner\` hoặc ghi \`learner="PC"\`
+- Parameter \`learner\` **LUÔN BẮT BUỘC** cho mọi SKILL_LEARNED tag
+- Khi NPC học kỹ năng: \`learner="Tên NPC"\`
+- Khi PC học kỹ năng: \`learner="Tên PC"\` (sử dụng tên thật của nhân vật chính)
 - **VÍ DỤ:** \`[SKILL_LEARNED: name="Haki Quan Sát", description="...", learner="Nami"]\`
 
 5. **Thế lực mới:**
@@ -149,7 +151,7 @@ test
 
 *   **Các Thẻ Quan Trọng Khác:**
         *   \`[COMPANION: name="...", description="...", personality="...", relationship="Quan hệ với PC", skills="Kỹ năng 1, Kỹ năng 2", realm="Cảnh giới", motivation="Động cơ đồng hành"]\`: **NÂNG CẤP** - Đồng hành với thông tin chi tiết. Tất cả đồng hành PHẢI có personality và relationship rõ ràng để AI có thể thể hiện cá tính riêng.
-        *   \`[SKILL_LEARNED: name="...", description="...", mastery="...", learner="Tên NPC (BẮT BUỘC khi NPC học)"]\`: Kỹ năng được học. **PHẢI** có \`learner\` khi NPC học kỹ năng.
+        *   \`[SKILL_LEARNED: name="...", description="...", mastery="...", learner="Tên nhân vật (LUÔN BẮT BUỘC)"]\`: Kỹ năng được học. **PHẢI** có \`learner\` cho mọi trường hợp.
         *   \`[REALM_UPDATE: target="Tên Thực Thể", realm="..."]\`: Cập nhật cảnh giới cho nhân vật hoặc NPC. Đối với kỹ năng, sử dụng \`[ENTITY_UPDATE: name="Tên kỹ năng", mastery="Mức độ mới"]\`.
         *   \`[RELATIONSHIP_CHANGED: npcName="Tên NPC", relationship="Mối quan hệ"]\`
         *   \`[ENTITY_UPDATE: name="Tên Thực Thể", newDescription="Mô tả mới đầy đủ..."]\`: **QUAN TRỌNG:** Sử dụng thuộc tính \`newDescription\` để cập nhật mô tả.
@@ -594,14 +596,14 @@ Trả về JSON với format đã chỉ định.`;
 
       try {
           console.log('🧠 GenerateLoreConcepts: Đang gửi yêu cầu AI...');
-          const response = await ai.models.generateContent({
+          const response = await enhancedGenerateContent(ai, {
               model: selectedAiModel,
               contents: [{ role: 'user', parts: [{ text: conceptPrompt }] }],
               config: {
                   responseMimeType: "application/json",
                   responseSchema: conceptSchema
               }
-          });
+          }, 'generate_lore_concepts');
 
           console.log('🧠 GenerateLoreConcepts: Nhận được phản hồi AI');
           const responseText = response.text?.trim();
@@ -683,7 +685,7 @@ Trả về JSON với format đã chỉ định.`;
           
           console.log('🎮 StartNewGame: Đang tạo ngoại hình PC...');
           try {
-              const appearanceResponse = await ai.models.generateContent({
+              const appearanceResponse = await enhancedGenerateContent(ai, {
                   model: selectedAiModel,
                   contents: [{ 
                       role: 'user', 
@@ -697,7 +699,7 @@ Tính cách: ${pcEntity.personality}
 Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, tập trung vào đặc điểm nổi bật.` 
                       }]
                   }]
-              });
+              }, 'generate_character_appearance');
               const appearance = appearanceResponse.text?.trim();
               if (appearance) {
                   pcEntity.appearance = appearance;
@@ -891,11 +893,43 @@ Mô tả ngoại hình phải phù hợp với bối cảnh và tính cách, t�
                                 const entity = entities[key];
                                 console.log(`🧹 CleanDuplicateSkills: Checking entity "${key}" type:`, entity.type);
                                 
+                                // Convert old skill levels to new system for all entities
+                                if (entity.mastery) {
+                                    const oldMastery = entity.mastery.toLowerCase();
+                                    if (oldMastery.includes('tiểu thành') || oldMastery.includes('bậc tiểu thành')) {
+                                        entity.mastery = 'Trung Cấp';
+                                        console.log(`🔄 SkillLevelFix: Converted "${key}" mastery from old to "Trung Cấp"`);
+                                    } else if (oldMastery.includes('bậc nhập môn') || oldMastery.includes('mới học')) {
+                                        entity.mastery = 'Sơ Cấp';
+                                        console.log(`🔄 SkillLevelFix: Converted "${key}" mastery to "Sơ Cấp"`);
+                                    } else if (oldMastery.includes('bậc tinh thông') || oldMastery.includes('tinh thông')) {
+                                        entity.mastery = 'Cao Cấp';
+                                        console.log(`🔄 SkillLevelFix: Converted "${key}" mastery to "Cao Cấp"`);
+                                    } else if (oldMastery.includes('bậc đại thành') || oldMastery.includes('đại thành')) {
+                                        entity.mastery = 'Đại Thành';
+                                        console.log(`🔄 SkillLevelFix: Converted "${key}" mastery to "Đại Thành"`);
+                                    } else if (oldMastery.includes('bậc viên mãn') || oldMastery.includes('viên mãn')) {
+                                        entity.mastery = 'Viên Mãn';
+                                        console.log(`🔄 SkillLevelFix: Converted "${key}" mastery to "Viên Mãn"`);
+                                    }
+                                }
+
+                                // Convert skill names with old levels in PC's learned skills
                                 if (entity.type === 'pc' && entity.learnedSkills && Array.isArray(entity.learnedSkills)) {
                                     console.log(`🧹 CleanDuplicateSkills: Found PC "${entity.name}" with ${entity.learnedSkills.length} skills:`, entity.learnedSkills);
                                     
                                     const originalSkills = [...entity.learnedSkills];
                                     const seenSkills = new Set();
+                                    
+                                    // Convert old skill level names in skill strings
+                                    entity.learnedSkills = entity.learnedSkills.map(skill => {
+                                        let updatedSkill = skill;
+                                        if (skill.toLowerCase().includes('tiểu thành')) {
+                                            updatedSkill = skill.replace(/tiểu thành/gi, 'Trung Cấp');
+                                            console.log(`🔄 SkillLevelFix: Updated skill name: "${skill}" → "${updatedSkill}"`);
+                                        }
+                                        return updatedSkill;
+                                    });
                                     
                                     entity.learnedSkills = entity.learnedSkills.filter(skill => {
                                         // Normalize skill name - trim whitespace and convert to compare base name

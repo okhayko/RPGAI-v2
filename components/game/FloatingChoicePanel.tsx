@@ -1,22 +1,27 @@
 // components/game/FloatingChoicePanel.tsx
 import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { SpinnerIcon, SparklesIcon } from '../Icons';
+import { QuestBadge } from './QuestBadge';
+import { SparklesIcon as CategoryIcon } from '../GameIcons';
+import type { Quest, ChoiceMetadata, QuestLink } from '../types';
+import { 
+    calculateCategorySupport, 
+    applySupport, 
+    getCategorySupportIndicator, 
+    setLastSelectedCategory,
+    parseCategoryFromChoice,
+    type ChoiceCategory
+} from '../utils/categorySupportSystem';
 
-interface ChoiceData {
-    content: string;
-    time?: string;
-    successRate?: number;
-    risk?: 'Thấp' | 'Trung Bình' | 'Cao' | 'Cực Cao';
-    riskDescription?: string;
-    rewards?: string;
-    isNSFW?: boolean;
-}
+// Legacy ChoiceData interface - deprecated, use ChoiceMetadata instead
+interface ChoiceData extends ChoiceMetadata {}
 
 interface FloatingChoicePanelProps {
     isAiReady: boolean;
     apiKeyError: string | null;
     isLoading: boolean;
     choices: string[];
+    quests: Quest[];                  // Active quests for quest linking
     handleAction: (action: string) => void;
     debouncedHandleAction: (action: string) => void;
     customAction: string;
@@ -29,39 +34,51 @@ interface FloatingChoicePanelProps {
 }
 
 // Utility functions for choice parsing and styling
-const parseChoiceData = (choice: string): ChoiceData => {
+const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
+    // Convert literal \n to actual newlines for proper parsing
+    let normalizedChoice = choice.replace(/\\n/g, '\n');
+    
     // Simple approach: extract data using regex, keep original content intact
-    let content = choice;
+    let content = normalizedChoice;
     let time = undefined;
     let successRate = undefined;
     let risk: ChoiceData['risk'] = undefined;
     let riskDescription = undefined;
     let rewards = undefined;
     let isNSFW = false;
+    let questLink: QuestLink | undefined = undefined;
+    let category: string | undefined = undefined;
+    
+    // Extract category from ✦Category✦ format at the beginning
+    const categoryMatch = content.match(/^✦([^✦]+)✦\s*/);
+    if (categoryMatch) {
+        category = categoryMatch[1].trim();
+        content = content.replace(categoryMatch[0], '').trim();
+    }
     
     // Check for NSFW tag
-    const nsfwMatch = choice.match(/\(NSFW\)/i);
+    const nsfwMatch = content.match(/\(NSFW\)/i);
     if (nsfwMatch) {
         isNSFW = true;
         content = content.replace(nsfwMatch[0], '').trim();
     }
     
     // Extract time from parentheses (look for Vietnamese time units)
-    const timeMatch = choice.match(/\(([^)]*(?:phút|giờ|tiếng|ngày|tuần|tháng|năm)[^)]*)\)/i);
+    const timeMatch = content.match(/\(([^)]*(?:phút|giờ|tiếng|ngày|tuần|tháng|năm)[^)]*)\)/i);
     if (timeMatch) {
         time = timeMatch[1];
         content = content.replace(timeMatch[0], '').trim();
     }
     
     // Extract success rate
-    const successMatch = choice.match(/(?:Tỷ|Tỉ) lệ thành công:\s*(\d+)%/i);
+    const successMatch = content.match(/(?:Tỷ|Tỉ) lệ thành công:\s*(\d+)%/i);
     if (successMatch) {
         successRate = parseInt(successMatch[1]);
         content = content.replace(successMatch[0], '').trim();
     }
     
     // Extract risk and description  
-    const riskMatch = choice.match(/Rủi ro:\s*([^,\n]*?)(?:,\s*([^\n]*))?(?=\n|$)/im);
+    const riskMatch = content.match(/Rủi ro:\s*([^,\n]*?)(?:,\s*([^\n]*))?(?=\n|$)/im);
     if (riskMatch) {
         const riskText = riskMatch[1].trim().toLowerCase();
         if (riskText.includes('thấp')) risk = 'Thấp';
@@ -73,10 +90,31 @@ const parseChoiceData = (choice: string): ChoiceData => {
     }
     
     // Extract rewards
-    const rewardsMatch = choice.match(/Phần thưởng:\s*(.*?)(?=\n|$)/is);
+    const rewardsMatch = content.match(/Phần thưởng:\s*(.*?)(?=\n|$)/is);
     if (rewardsMatch) {
         rewards = rewardsMatch[1].trim();
         content = content.replace(rewardsMatch[0], '').trim();
+    }
+    
+    // Extract quest linking information
+    const questMatch = content.match(/Mục tiêu nhiệm vụ "([^"]+)"/i);
+    if (questMatch) {
+        const questTitle = questMatch[1];
+        // Find the quest and look for uncompleted objectives
+        const quest = quests.find(q => q.title === questTitle && q.status === 'active');
+        if (quest) {
+            // Find the first uncompleted objective
+            const uncompletedObjective = quest.objectives.find(obj => !obj.completed);
+            if (uncompletedObjective) {
+                questLink = {
+                    questTitle: questTitle,
+                    objectiveId: uncompletedObjective.id,
+                    objectiveDescription: uncompletedObjective.description
+                };
+            }
+        }
+        // Remove the quest link text from content
+        content = content.replace(questMatch[0], '').trim();
     }
     
     // Clean up content - remove extra whitespace and leading numbers
@@ -86,14 +124,71 @@ const parseChoiceData = (choice: string): ChoiceData => {
         .replace(/\s+/g, ' ') // Replace multiple spaces with single space
         .trim();
     
+    // Validation and fallback values for missing metadata
+    if (successRate === undefined) {
+        // If no success rate found, attempt to infer from content or provide default
+        if (content.toLowerCase().includes('dễ dàng') || content.toLowerCase().includes('đơn giản')) {
+            successRate = 85;
+        } else if (content.toLowerCase().includes('khó khăn') || content.toLowerCase().includes('nguy hiểm')) {
+            successRate = 45;
+        } else {
+            successRate = 70; // Default moderate success rate
+        }
+    }
+    
+    if (!risk) {
+        // If no risk found, attempt to infer from content or provide default
+        if (content.toLowerCase().includes('an toàn') || content.toLowerCase().includes('không nguy hiểm')) {
+            risk = 'Thấp';
+        } else if (content.toLowerCase().includes('nguy hiểm') || content.toLowerCase().includes('rủi ro cao')) {
+            risk = 'Cao';
+        } else {
+            risk = 'Trung Bình'; // Default moderate risk
+        }
+    }
+    
+    if (!rewards) {
+        // If no rewards found, provide a generic description
+        rewards = 'Tiến triển trong câu chuyện và mở ra cơ hội mới.';
+    }
+    
+    // Apply category support system
+    let supportedSuccessRate = successRate;
+    let supportedRisk = risk;
+    let supportIndicator = '';
+    let supportTooltip = '';
+    
+    if (category) {
+        const choiceCategory = parseCategoryFromChoice(choice);
+        if (choiceCategory) {
+            const support = calculateCategorySupport(choiceCategory);
+            if (support.successRateBonus > 0) {
+                const { modifiedSuccessRate, modifiedRisk } = applySupport(successRate, risk, support);
+                supportedSuccessRate = modifiedSuccessRate;
+                supportedRisk = modifiedRisk;
+                
+                const indicator = getCategorySupportIndicator(choiceCategory);
+                supportIndicator = indicator.indicator;
+                supportTooltip = indicator.tooltip;
+            }
+        }
+    }
+    
     return {
         content,
         time,
-        successRate,
-        risk,
+        successRate: supportedSuccessRate,
+        risk: supportedRisk,
         riskDescription,
         rewards,
-        isNSFW
+        isNSFW,
+        questLink,
+        category,
+        // Add support-related data
+        originalSuccessRate: successRate,
+        originalRisk: risk,
+        supportIndicator,
+        supportTooltip
     };
 };
 
@@ -121,6 +216,7 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
     apiKeyError,
     isLoading,
     choices,
+    quests,
     handleAction,
     debouncedHandleAction,
     customAction,
@@ -205,6 +301,9 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
     }, [localCustomAction, debouncedHandleAction, isComposing]);
     
     const handleSendAction = useCallback(() => {
+        // Custom actions don't have structured categories, so reset support system
+        setLastSelectedCategory(null);
+        
         handleAction(localCustomAction);
         setIsChoicesExpanded(false);
     }, [localCustomAction, handleAction]);
@@ -273,11 +372,15 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
             ) : (
               <div className="space-y-3">
                 {choices.map((choice, index) => {
-                  const choiceData = parseChoiceData(choice);
+                  const choiceData = parseChoiceData(choice, quests);
                   return (
                     <button
                       key={index}
                       onClick={() => {
+                        // Update category support system before handling action
+                        const category = parseCategoryFromChoice(choice);
+                        setLastSelectedCategory(category);
+                        
                         handleAction(choice);
                         setIsChoicesExpanded(false);
                       }}
@@ -293,30 +396,64 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
                           {index + 1}
                         </div>
                         <div className="flex-grow space-y-2">
-                          {/* 1. Nội dung lựa chọn */}
+                          {/* 1. Nội dung lựa chọn với quest badge */}
                           <div>
-                            <p className="text-white group-hover:text-cyan-100 transition-colors duration-300 text-base font-medium leading-relaxed">
-                              {choiceData.content.match(/^\d+\.\s/)
-                                ? choiceData.content.replace(/^\d+\.\s/, "")
-                                : choiceData.content}
-                              {choiceData.time && (
-                                <span className="ml-2 font-bold text-blue-400">
-                                  ({choiceData.time})
-                                </span>
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="text-white group-hover:text-cyan-100 transition-colors duration-300 text-base font-medium leading-relaxed flex-grow">
+                                {choiceData.category && (
+                                  <span className="inline-flex items-center gap-1 text-yellow-300 font-bold mr-2">
+                                    <CategoryIcon className="w-3 h-3" />
+                                    {choiceData.category}
+                                    <CategoryIcon className="w-3 h-3" />
+                                    {choiceData.supportIndicator && (
+                                      <span 
+                                        className="text-green-400 ml-1" 
+                                        title={choiceData.supportTooltip}
+                                      >
+                                        {choiceData.supportIndicator}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+                                {choiceData.content.match(/^\d+\.\s/)
+                                  ? choiceData.content.replace(/^\d+\.\s/, "")
+                                  : choiceData.content}
+                                {choiceData.time && (
+                                  <span className="ml-2 font-bold text-blue-400">
+                                    ({choiceData.time})
+                                  </span>
+                                )}
+                                {choiceData.isNSFW && (
+                                  <span className="ml-2 font-bold text-red-500">
+                                    (NSFW)
+                                  </span>
+                                )}
+                              </p>
+                              {choiceData.questLink && (
+                                <QuestBadge className="ml-2 flex-shrink-0" />
                               )}
-                              {choiceData.isNSFW && (
-                                <span className="ml-2 font-bold text-red-500">
-                                  (NSFW)
-                                </span>
-                              )}
-                            </p>
+                            </div>
+                            {/* Quest objective description */}
+                            {choiceData.questLink && (
+                              <p className="text-yellow-300 font-bold text-sm">
+                                Mục tiêu "{choiceData.questLink.objectiveDescription}" thuộc nhiệm vụ "{choiceData.questLink.questTitle}"
+                              </p>
+                            )}
                           </div>
                           
                           {/* 2. Tỷ lệ thành công và Rủi ro */}
                           <div className="text-sm">
                             {choiceData.successRate !== undefined && (
                               <span className="text-white">
-                                Tỷ lệ thành công: <span className={`font-medium ${getSuccessRateColor(choiceData.successRate)}`}>{choiceData.successRate}%</span>
+                                Tỷ lệ thành công: <span className={`font-medium ${getSuccessRateColor(choiceData.successRate)}`}>
+                                  {choiceData.originalSuccessRate !== undefined && choiceData.originalSuccessRate !== choiceData.successRate && (
+                                    <span className="line-through text-gray-500 mr-1">{choiceData.originalSuccessRate}%</span>
+                                  )}
+                                  {choiceData.successRate}%
+                                  {choiceData.originalSuccessRate !== undefined && choiceData.originalSuccessRate !== choiceData.successRate && (
+                                    <span className="text-green-400 ml-1" title="Được hỗ trợ bởi lựa chọn trước đó">⬆</span>
+                                  )}
+                                </span>
                               </span>
                             )}
                             {choiceData.successRate !== undefined && choiceData.risk && (
@@ -324,7 +461,15 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
                             )}
                             {choiceData.risk && (
                               <span className="text-white">
-                                Rủi ro: <span className={`font-medium ${getRiskColor(choiceData.risk)}`}>{choiceData.risk}</span>
+                                Rủi ro: <span className={`font-medium ${getRiskColor(choiceData.risk)}`}>
+                                  {choiceData.originalRisk && choiceData.originalRisk !== choiceData.risk && (
+                                    <span className="line-through text-gray-500 mr-1">{choiceData.originalRisk}</span>
+                                  )}
+                                  {choiceData.risk}
+                                  {choiceData.originalRisk && choiceData.originalRisk !== choiceData.risk && (
+                                    <span className="text-green-400 ml-1" title="Giảm rủi ro nhờ hỗ trợ">⬇</span>
+                                  )}
+                                </span>
                                 {choiceData.riskDescription && (
                                   <span className="text-gray-300">
                                     , {choiceData.riskDescription}

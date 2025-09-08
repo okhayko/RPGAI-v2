@@ -3,6 +3,10 @@ import type { GameHistoryEntry, SaveData, RegexRule, NPCPresent } from '../types
 import { buildEnhancedRagPrompt } from '../promptBuilder';
 import { createAutoTrimmedStoryLog } from '../utils/storyLogUtils';
 import { regexEngine, RegexPlacement } from '../utils/RegexEngine';
+import { processQuestObjectiveCompletion } from '../utils/questManager';
+import { processQuestRewards, markQuestRewardsAsGranted } from '../utils/questRewardProcessor';
+import { enhancedGenerateContent, enhancedWorldCreation, extractResponseText, isQueuedResponse, setupQueuedChoiceHandler } from '../utils/RetryIntegration';
+import { apiRetrySystem } from '../utils/ApiRetrySystem';
 
 /**
  * Enhances NPC data by filling missing fields with intelligent defaults
@@ -235,6 +239,8 @@ export interface GameActionHandlersParams {
     setCurrentTurnTokens: (tokens: number) => void;
     setTotalTokens: (tokens: number | ((prev: number) => number)) => void;
     setNPCsPresent: (npcs: import('../types').NPCPresent[]) => void;
+    setQuests: (quests: import('../types').Quest[] | ((prev: import('../types').Quest[]) => import('../types').Quest[])) => void;
+    setKnownEntities: (entities: { [key: string]: import('../types').Entity } | ((prev: { [key: string]: import('../types').Entity }) => { [key: string]: import('../types').Entity })) => void;
     
     // Current state values
     gameHistory: GameHistoryEntry[];
@@ -243,6 +249,7 @@ export interface GameActionHandlersParams {
     ruleChanges: any;
     setRuleChanges: (changes: any) => void;
     parseStoryAndTags: (text: string, applySideEffects: boolean) => string;
+    knownEntities: { [key: string]: import('../types').Entity };
     
     // Choice history tracking
     updateChoiceHistory: (choices: string[], selectedChoice?: string, context?: string) => void;
@@ -260,9 +267,9 @@ export const createGameActionHandlers = (params: GameActionHandlersParams) => {
         isUsingDefaultKey, userApiKeyCount, rotateKey, rehydratedChoices,
         temperature, topK, topP, enableCOT,
         setIsLoading, setChoices, setCustomAction, setStoryLog, setGameHistory,
-        setTurnCount, setCurrentTurnTokens, setTotalTokens, setNPCsPresent,
+        setTurnCount, setCurrentTurnTokens, setTotalTokens, setNPCsPresent, setQuests, setKnownEntities,
         gameHistory, customRules, regexRules, ruleChanges, setRuleChanges, parseStoryAndTags,
-        updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown
+        knownEntities, updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown
     } = params;
 
     // Create auto-trimmed story log functions
@@ -357,7 +364,7 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
             // Use full prompt for AI generation
             const fullInitialHistory: GameHistoryEntry[] = [{ role: 'user', parts: [{ text: userPrompt }] }];
             
-            const response = await ai.models.generateContent({
+            const response = await enhancedWorldCreation(ai, {
                 model: selectedModel, 
                 contents: fullInitialHistory,
                 config: { 
@@ -365,7 +372,7 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                     responseMimeType: "application/json", 
                     responseSchema: responseSchema 
                 }
-            });
+            }, worldData);
             
             console.log('📖 GenerateInitialStory: AI response received:', {
                 hasText: !!response.text,
@@ -450,6 +457,29 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
 
         if (!originalAction || !ai) return;
 
+        // Extract time cost from action text BEFORE processing
+        const { extractTimeCostFromAction, createTimeElapsedTag } = await import('../utils/timeCostExtractor');
+        const extractedTimeCost = extractTimeCostFromAction(originalAction);
+        
+        // Detect skill usage from player action for automatic experience gain
+        const { detectSkillUsageFromChoice } = await import('../utils/skillUsageDetector');
+        const skillUsageResult = detectSkillUsageFromChoice(originalAction, knownEntities);
+        
+        // Check if this is a breakthrough choice
+        const { isBreakthroughChoice, extractSkillFromBreakthroughChoice, extractSuccessRateFromChoice } = await import('../utils/breakthroughChoiceGenerator');
+        const isBreakthrough = isBreakthroughChoice(originalAction);
+        let breakthroughConstraint = '';
+        
+        if (isBreakthrough) {
+            const skillName = extractSkillFromBreakthroughChoice(originalAction);
+            const successRate = extractSuccessRateFromChoice(originalAction);
+            
+            if (skillName) {
+                breakthroughConstraint = `\n\n**✦ BREAKTHROUGH ATTEMPT ✦**: This is a breakthrough attempt for skill "${skillName}" with ${(successRate * 100).toFixed(0)}% success rate. You MUST use the tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}"]`;
+                console.log(`✦ Breakthrough attempt detected for ${skillName} (${(successRate * 100).toFixed(0)}% success rate)`);
+            }
+        }
+        
         // Process player input through regex rules
         const processedAction = regexEngine.processText(
             originalAction, 
@@ -464,6 +494,18 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
         setIsLoading(true);
         setChoices([]);
         setCustomAction('');
+        
+        // Roll for breakthrough eligibility at the start of each turn
+        const { rollForBreakthroughEligibility } = await import('../utils/skillExpManager');
+        const allSkills = Object.values(knownEntities).filter(entity => entity.type === 'skill');
+        const updatedSkills = rollForBreakthroughEligibility(allSkills);
+        
+        // Update skill entities with new breakthrough eligibility
+        const updatedEntities = { ...knownEntities };
+        updatedSkills.forEach(skill => {
+            updatedEntities[skill.name] = skill;
+        });
+        setKnownEntities(updatedEntities);
         storyLogManager.update(prev => [...prev, `> ${processedAction}`]);
         
         // Track selected choice in history
@@ -473,6 +515,41 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
         if (ruleChanges) {
             // Build context string from ruleChanges
             setRuleChanges(null); 
+        }
+        
+        // Add time cost constraint if extracted from action
+        if (extractedTimeCost) {
+            const timeElapsedTag = createTimeElapsedTag(extractedTimeCost);
+            const timeConstraint = `\n\n**⏰ THỜI GIAN BẮT BUỘC**: Hành động này có thời gian ước tính từ lựa chọn: "${extractedTimeCost.originalText}". Bạn PHẢI sử dụng chính xác thẻ: ${timeElapsedTag}`;
+            ruleChangeContext += timeConstraint;
+            console.log(`⏰ Added time constraint to prompt: ${timeElapsedTag}`);
+        }
+        
+        // Add skill experience constraint if skills were used in action
+        if (skillUsageResult.skillsUsed.length > 0) {
+            const skillNames = skillUsageResult.skillsUsed.map(s => s.name).join(', ');
+            const skillTags = skillUsageResult.commandTags.join(' ');
+            const skillConstraint = `\n\n**⚔️ KỸ NĂNG SỬ DỤNG**: Hành động này sử dụng kỹ năng: ${skillNames}. Bạn PHẢI bao gồm các thẻ kinh nghiệm kỹ năng sau: ${skillTags}`;
+            ruleChangeContext += skillConstraint;
+            console.log(`⚔️ Added skill usage constraint to prompt: ${skillNames} (${skillUsageResult.expGained} exp each)`);
+        }
+        
+        // Add breakthrough constraint if this is a breakthrough attempt
+        if (breakthroughConstraint) {
+            ruleChangeContext += breakthroughConstraint;
+        }
+
+        // Add breakthrough eligibility roll and constraints (use updated entities)
+        const { generateBreakthroughConstraint, generateCappedSkillConstraint } = await import('../utils/breakthroughChoiceGenerator');
+        const breakthroughChoiceConstraint = generateBreakthroughConstraint(updatedEntities);
+        const cappedSkillConstraint = generateCappedSkillConstraint(updatedEntities);
+        
+        if (breakthroughChoiceConstraint) {
+            ruleChangeContext += breakthroughChoiceConstraint;
+        }
+        
+        if (cappedSkillConstraint) {
+            ruleChangeContext += cappedSkillConstraint;
         }
 
         let nsfwInstructionPart = isNsfwRequest && currentGameState.worldData.allowNsfw ? `\nLƯU Ý ĐẶC BIỆT: ...` : '';
@@ -523,7 +600,16 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
         const updatedHistory = [...gameHistory, optimizedUserEntry];
 
         try {
-            const response = await ai.models.generateContent({
+            // Generate choice ID for tracking and idempotency
+            const choiceId = apiRetrySystem.generateChoiceId();
+            const gameStateSnapshot = {
+                gameHistory: updatedHistory,
+                knownEntities,
+                currentTurn: gameHistory?.length || 0,
+                action: originalAction
+            };
+            
+            const response = await enhancedGenerateContent(ai, {
                 model: selectedModel, 
                 contents: apiHistory, // Use full context for AI
                 config: { 
@@ -535,12 +621,23 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                     topP: topP,
                     topK: topK
                 }
-            });
+            }, `player_choice_${originalAction.substring(0, 50)}`, choiceId, gameStateSnapshot);
+            
+            // Check if response was queued
+            if (isQueuedResponse(response)) {
+                console.log('🔄 Response was queued for later retry');
+                const queueMessage = extractResponseText(response);
+                storyLogManager.update(prev => [...prev, `⏳ ${queueMessage}`]);
+                setChoices(['Thử lại yêu cầu này', 'Tiếp tục với hành động khác']);
+                setIsLoading(false);
+                return true; // Indicate successful handling (even if queued)
+            }
+
             const turnTokens = response.usageMetadata?.totalTokenCount || 0;
             setCurrentTurnTokens(turnTokens);
             setTotalTokens(prev => prev + turnTokens);
 
-            const responseText = response.text?.trim() || '';
+            const responseText = extractResponseText(response);
             
             // DEBUG: Log response details 
             console.log(`📤 [Turn ${currentGameState.turnCount}] AI Response Debug:`, {
@@ -655,7 +752,7 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                     // Continue with current response to prevent infinite loop
                 } else {
                 
-                const retryResponse = await ai.models.generateContent({
+                const retryResponse = await enhancedGenerateContent(ai, {
                     model: selectedModel, 
                     contents: retryHistory,
                     config: { 
@@ -667,7 +764,7 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                         topP: Math.max(topP - 0.05, 0.1),
                         topK: Math.max(topK - 10, 10)
                     }
-                });
+                }, `retry_duplicate_${attemptNumber}`, choiceId, gameStateSnapshot);
                 
                 const retryText = retryResponse.text?.trim() || '';
                 if (retryText) {
@@ -736,6 +833,82 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
             // Only increment turn count after successful story generation and parsing
             const parseSuccess = parseApiResponseHandler(finalResponseText);
             if (parseSuccess) {
+                // Process quest objective completion
+                const questResult = processQuestObjectiveCompletion(
+                    originalAction, 
+                    currentGameState.quests, 
+                    currentGameState.turnCount + 1
+                );
+                
+                if (questResult.completedObjectives.length > 0 || questResult.completedQuests.length > 0) {
+                    // Update quests with completed objectives
+                    setQuests(questResult.updatedQuests);
+                    
+                    // Log quest completion info
+                    if (questResult.completedObjectives.length > 0) {
+                        console.log(`✅ Completed ${questResult.completedObjectives.length} quest objective(s):`, 
+                                  questResult.completedObjectives.map(obj => `"${obj.objectiveDescription}" for "${obj.questTitle}"`));
+                    }
+                    
+                    if (questResult.completedQuests.length > 0) {
+                        console.log(`🏆 Completed ${questResult.completedQuests.length} quest(s):`, questResult.completedQuests);
+                        
+                        // Add quest completion notifications to story log
+                        questResult.completedQuests.forEach(questTitle => {
+                            storyLogManager.update(prev => [...prev, `🏆 Nhiệm vụ hoàn thành: "${questTitle}"`]);
+                        });
+
+                        // CRITICAL: Process and grant quest rewards automatically
+                        try {
+                            // Get the completed quests objects
+                            const completedQuestObjects = questResult.updatedQuests.filter(quest => 
+                                questResult.completedQuests.includes(quest.title) && quest.status === 'completed'
+                            );
+
+                            if (completedQuestObjects.length > 0) {
+                                console.log(`💰 Processing rewards for ${completedQuestObjects.length} completed quest(s)`);
+                                
+                                // Process quest rewards
+                                const rewardResults = processQuestRewards(completedQuestObjects, knownEntities);
+                                
+                                // Apply all reward command tags through parseStoryAndTags
+                                const allCommandTags = rewardResults.flatMap(result => result.commandTags);
+                                
+                                if (allCommandTags.length > 0) {
+                                    console.log(`🎁 Applying ${allCommandTags.length} reward command tag(s):`);
+                                    allCommandTags.forEach(tag => console.log(`   ${tag}`));
+                                    
+                                    // Create a fake story with the command tags to trigger processing
+                                    const rewardStory = `[Quest rewards granted automatically]\n${allCommandTags.join('\n')}`;
+                                    parseStoryAndTags(rewardStory, true); // Apply side effects to grant rewards
+                                    
+                                    // Mark quests as having rewards granted to prevent duplicates
+                                    const updatedQuestsWithRewardFlag = markQuestRewardsAsGranted(
+                                        questResult.updatedQuests, 
+                                        questResult.completedQuests
+                                    );
+                                    setQuests(updatedQuestsWithRewardFlag);
+                                    
+                                    // Add reward notifications to story log
+                                    const totalRewards = rewardResults.reduce((sum, result) => sum + result.rewards.length, 0);
+                                    storyLogManager.update(prev => [...prev, `💰 Tự động trao ${totalRewards} phần thưởng từ nhiệm vụ đã hoàn thành`]);
+                                } else {
+                                    console.log(`ℹ️ No rewards to grant for completed quests`);
+                                }
+                                
+                                // Log any errors
+                                const allErrors = rewardResults.flatMap(result => result.errors);
+                                if (allErrors.length > 0) {
+                                    console.warn(`⚠️ Quest reward processing errors:`, allErrors);
+                                }
+                            }
+                        } catch (rewardError: any) {
+                            console.error(`❌ Failed to process quest rewards:`, rewardError);
+                            storyLogManager.update(prev => [...prev, `⚠️ Lỗi khi xử lý phần thưởng nhiệm vụ: ${rewardError.message}`]);
+                        }
+                    }
+                }
+                
                 setTurnCount(prev => {
                     const newTurn = prev + 1;
                     console.log(`🎯 Turn count successfully incremented to ${newTurn} after successful story generation`);
@@ -793,10 +966,10 @@ VÍ DỤ:
 
 Hãy gợi ý hành động:`;
 
-            const response = await ai.models.generateContent({
+            const response = await enhancedGenerateContent(ai, {
                 model: selectedModel,
                 contents: [{ role: 'user', parts: [{ text: suggestionPrompt }] }],
-            });
+            }, 'action_suggestion');
             
             const suggestedAction = response.text?.trim() || 'Không thể nhận gợi ý lúc này.';
             

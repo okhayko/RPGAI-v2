@@ -1,10 +1,12 @@
 // components/game/CombinedStoryPanel.tsx
 import React, { memo, useMemo, useEffect, useRef, useState, useCallback } from 'react';
-import { SpinnerIcon, PinIcon } from '../Icons';
+import { SpinnerIcon } from '../Icons';
 import { OptimizedInteractiveText } from '../OptimizedInteractiveText';
 import { StatusPanelContent } from './StatusPanelContent';
 import { useOptimizedScroll } from '../hooks/useOptimizedScroll';
 import { isHTMLContent } from '../utils/htmlParser';
+import { getIconForLocation, getIconForWeather } from '../utils';
+import * as GameIcons from '../GameIcons';
 import type { KnownEntities } from '../types';
 
 interface VirtualItem {
@@ -116,77 +118,45 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
     const [itemHeights, setItemHeights] = useState<Map<string, number>>(new Map());
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Get appropriate icon for content
+    // Get appropriate icon for content using RPG AI Lite icon system
     const getContentIcon = useCallback((content: string) => {
         const lowerContent = content.toLowerCase();
         
-        // Check for world name (first item, usually contains "Đạo Đồ" or similar)
+        // Check for world name (first item, usually contains "Đạo Đồ" or similar) - Use globe/planet icon
         if (lowerContent.includes('đạo đồ') || lowerContent.includes('thế giới') || lowerContent.includes('giới')) {
-            return '🌍';
+            return (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                    <path d="M12,2C6.48,2 2,6.48 2,12C2,17.52 6.48,22 12,22C17.52,22 22,17.52 22,12C22,6.48 17.52,2 12,2M12,4C16.41,4 20,7.59 20,12C20,16.41 16.59,20 12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4M6.5,8.5C6.2,8.5 6,8.7 6,9V11C6,11.3 6.2,11.5 6.5,11.5H8.5C8.8,11.5 9,11.3 9,11V9C9,8.7 8.8,8.5 8.5,8.5H6.5M15.5,8.5C15.2,8.5 15,8.7 15,9V11C15,11.3 15.2,11.5 15.5,11.5H17.5C17.8,11.5 18,11.3 18,11V9C18,8.7 17.8,8.5 17.5,8.5H15.5M12,13C10.9,13 10,13.9 10,15C10,16.1 10.9,17 12,17C13.1,17 14,16.1 14,15C14,13.9 13.1,13 12,13Z" />
+                </svg>
+            );
         }
         
         // Check for turn/round
         if (lowerContent.includes('lượt') || lowerContent.includes('turn')) {
-            return '🎲';
+            return <GameIcons.SparklesIcon className="w-4 h-4" />;
         }
         
-        // Check for weather
-        if (lowerContent.includes('nắng') || lowerContent.includes('nóng') || lowerContent.includes('quang')) {
-            return '☀️';
-        }
-        if (lowerContent.includes('mưa') || lowerContent.includes('ẩm')) {
-            return '🌧️';
-        }
-        if (lowerContent.includes('mây') || lowerContent.includes('âm u')) {
-            return '☁️';
-        }
-        if (lowerContent.includes('gió') || lowerContent.includes('bão')) {
-            return '💨';
-        }
-        if (lowerContent.includes('tuyết') || lowerContent.includes('băng')) {
-            return '❄️';
-        }
-        if (lowerContent.includes('sương mù')) {
-            return '🌫️';
+        // Check for weather using contextual weather icons
+        const isWeatherContent = /^(Trời|Mây|Nắng|Mưa|Sáng|Chiều|Tối|Đêm|Hoàng hôn|Bình minh|Sương mù|Gió|Bão|Tuyết|Băng)/i.test(content);
+        if (isWeatherContent) {
+            const weatherIcon = getIconForWeather(content);
+            return React.cloneElement(weatherIcon as React.ReactElement, { className: "w-4 h-4" });
         }
         
-        // Check for location types based on the map legend
-        if (lowerContent.includes('rừng') || lowerContent.includes('forest')) {
-            return '🌲';
-        }
-        if (lowerContent.includes('núi') || lowerContent.includes('đồi') || lowerContent.includes('mountain')) {
-            return '🏔️';
-        }
-        if (lowerContent.includes('thành phố') || lowerContent.includes('đô thị')) {
-            return '🏙️';
-        }
-        if (lowerContent.includes('thị trấn') || lowerContent.includes('trấn')) {
-            return '🏘️';
-        }
-        if (lowerContent.includes('làng') || lowerContent.includes('mạc')) {
-            return '🏰';
-        }
-        if (lowerContent.includes('hang') || lowerContent.includes('động')) {
-            return '🕳️';
-        }
-        if (lowerContent.includes('sông') || lowerContent.includes('hồ') || lowerContent.includes('river') || lowerContent.includes('lake')) {
-            return '🌊';
-        }
-        if (lowerContent.includes('sa mạc') || lowerContent.includes('cát')) {
-            return '🏜️';
-        }
-        if (lowerContent.includes('đền') || lowerContent.includes('chùa') || lowerContent.includes('temple')) {
-            return '🏯';
-        }
-        if (lowerContent.includes('quân') || lowerContent.includes('căn cứ') || lowerContent.includes('pháo đài')) {
-            return '⚔️';
-        }
-        if (lowerContent.includes('cửa hàng') || lowerContent.includes('chợ')) {
-            return '🏪';
+        // Check for location types using contextual location icons
+        const mockLocationEntity = { name: content, type: 'location' as const };
+        const isLocationContent = !(/^\d+$/.test(content) || 
+                               /^(Lượt|Ngày|Tháng|Năm|Giờ|\d+|Trời|Mây|Nắng|Mưa|Sáng|Chiều|Tối|Đêm)/i.test(content)) 
+                               && !(lowerContent.includes('đạo đồ') || lowerContent.includes('thế giới')) 
+                               && !isWeatherContent;
+        
+        if (isLocationContent) {
+            const locationIcon = getIconForLocation(mockLocationEntity, false);
+            return React.cloneElement(locationIcon as React.ReactElement, { className: "w-4 h-4" });
         }
         
-        // Default location icon
-        return '📍';
+        // Default generic location icon
+        return <GameIcons.DefaultLocationIcon className="w-4 h-4" />;
     }, []);
 
     // Parse context header to make locations clickable
@@ -202,9 +172,10 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
                 
                 // Check what type of content this is
                 const isWorldName = content.toLowerCase().includes('đạo đồ') || content.toLowerCase().includes('thế giới');
+                const isWeather = /^(Trời|Mây|Nắng|Mưa|Sáng|Chiều|Tối|Đêm|Hoàng hôn|Bình minh|Sương mù|Gió|Bão|Tuyết|Băng)/i.test(content);
                 const isLocation = !(/^\d+$/.test(content) || 
                                    /^(Lượt|Ngày|Tháng|Năm|Giờ|\d+|Trời|Mây|Nắng|Mưa|Sáng|Chiều|Tối|Đêm)/i.test(content)) 
-                                   && !isWorldName;
+                                   && !isWorldName && !isWeather;
                 
                 if (isLocation) {
                     // Clickable location chip - GREEN with location pin
@@ -215,9 +186,9 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
                             className="inline-flex items-center gap-1.5 bg-purple-500/20 hover:bg-purple-500/40 text-green-400 hover:text-green-300 px-3 py-1.5 rounded-lg transition-all duration-200 hover:scale-105 border border-purple-400/30 hover:border-purple-300/50"
                             title={`Xem chi tiết ${content}`}
                         >
-                            <span>{icon}</span>
+                            <span className="w-4 h-4 text-green-400">{icon}</span>
                             <span className="text-sm font-bold">{content}</span>
-                            <PinIcon className="w-4 h-4 text-green-400" />
+                            <GameIcons.LocationCurrentIcon className="w-4 h-4 text-green-400" />
                         </button>
                     );
                 } else {
@@ -227,7 +198,7 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
                             key={index}
                             className="inline-flex items-center gap-1.5 bg-gray-500/20 text-gray-200 px-3 py-1.5 rounded-lg border border-gray-400/30"
                         >
-                            <span>{icon}</span>
+                            <span className="w-4 h-4 text-gray-200">{icon}</span>
                             <span className="text-sm font-bold">{content}</span>
                         </div>
                     );
@@ -459,17 +430,33 @@ export const CombinedStoryPanel: React.FC<CombinedStoryPanelProps> = memo(({
 
                 {/* Scroll to bottom button */}
                 {storyLog.length > 5 && (
-                    <div className="absolute top-4 right-4 flex flex-col gap-2">
-                        <button
-                            onClick={scrollToBottom}
-                            className="bg-gradient-to-r from-purple-500/30 to-pink-500/30 hover:from-purple-500/40 hover:to-pink-500/40 backdrop-blur-xl border border-purple-400/40 text-white p-3 rounded-2xl shadow-2xl transition-all hover:scale-110 group"
-                            title="Cuộn xuống cuối"
-                        >
-                            <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                            </svg>
-                        </button>
-                    </div>
+                    <>
+                        {/* Desktop scroll button */}
+                        <div className="absolute bottom-4 left-4 flex flex-col gap-2 hidden md:flex">
+                            <button
+                                onClick={scrollToBottom}
+                                className="bg-gradient-to-r from-purple-500/30 to-pink-500/30 hover:from-purple-500/40 hover:to-pink-500/40 backdrop-blur-xl border border-purple-400/40 text-white p-3 rounded-2xl shadow-2xl transition-all hover:scale-110 group"
+                                title="Cuộn xuống cuối"
+                            >
+                                <svg className="w-4 h-4 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                </svg>
+                            </button>
+                        </div>
+                        
+                        {/* Mobile scroll button - larger, centered at bottom */}
+                        <div className="absolute bottom-2 right-1/2 transform translate-x-1/2 md:hidden z-50">
+                            <button
+                                onClick={scrollToBottom}
+                                className="bg-gradient-to-r from-purple-500/50 to-pink-500/50 hover:from-purple-500/60 hover:to-pink-500/60 backdrop-blur-xl border-2 border-purple-400/60 text-white p-4 rounded-full shadow-2xl transition-all active:scale-95 group touch-manipulation"
+                                title="Cuộn xuống cuối"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                                </svg>
+                            </button>
+                        </div>
+                    </>
                 )}
 
                 {/* Scroll progress bar */}

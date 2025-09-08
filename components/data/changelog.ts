@@ -3,6 +3,16 @@ import type { ChangelogEntry } from '../types.ts';
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
   {
+    version: '2.1.0',
+    date: '2025-09-07',
+    changes: [
+      { type: 'feature', text: 'Hệ thống Đột Phá hoàn chỉnh - Triển khai hệ thống đột phá kỹ năng với cơ chế Giới Hạn Ký Năng, Sinh lựa chọn Đột Phá, và Xác thực Liên kết Chặt chẽ. Kỹ năng sẽ đừng lại ở EXP tối đa (không tự động thăng cấp), thêm trạng thái skillCapped và breakthroughEligible để điều khiển.' },
+      { type: 'improvement', text: 'Nâng cấp Giao diện - Cải thiện UI với Thanh Kinh nghiệm Động (xanh: tiến trình bình thường, vàng: đầy và chờ thăng cấp, cam-đỏ: đã đầy và đang chờ đột phá), Chi báo Trạng thái ("Đạt Bình Cảnh" cho kỹ năng đã cấp hạn, "Có thể đột phá" cho kỹ năng sẵn sàng nhiều ứng nhập), và Thông điệp Chi tiết.' },
+      { type: 'fix', text: 'Xác thực Liên kết Chặt chẽ - Không có nhiệm vụ thường EXP cho kỹ năng đã cày, lựa chọn đột phá chỉ xuất hiện cho kỹ năng hợp lệ, hoàn toàn ngăn tình trạng sau lệch dữ liệu.' },
+      { type: 'technical', text: 'Cơ chế Thành công Đột Phá - Tỷ lệ thành công 60-75% cùng với việc thăng cấp thông thao hợp lệ (Sơ Cấp→Trung Cấp→Cao Cấp→Đại Thành→Viên Mãn), nếu thất bại thì phải chờ cơ hội đột phá ở lượt tiếp theo.' },
+    ],
+  },
+  {
     version: '1.49.1',
     date: '2025-08-31',
     changes: [

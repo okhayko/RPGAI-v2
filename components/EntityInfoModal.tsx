@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Entity, Status, EntityType } from './types.ts';
 import { getIconForEntity, getIconForStatus, getStatusColors, getStatusBorderColor, getStatusTextColor, getStatusFontWeight } from './utils.ts';
 import { CrossIcon } from './Icons.tsx';
 import { MBTI_PERSONALITIES } from './data/mbti.ts';
+import { ConfirmationModal } from './ConfirmationModal';
 
 // Utility function to format numbers properly, removing trailing commas
 const formatNumber = (value: number): string => {
@@ -36,7 +37,22 @@ export const EntityInfoModal: React.FC<{
     onDeleteStatus?: (statusName: string, entityName: string) => void;
     onMapOpen?: () => void;
 }> = ({ entity, onClose, onUseItem, onLearnItem, onEquipItem, onUnequipItem, statuses, onStatusClick, onLocationAction, worldData, onEditSkill, onEditNPC, onEditPC, onEditLocation, onDeleteStatus, onMapOpen }) => {
+    const [showDeleteStatusConfirm, setShowDeleteStatusConfirm] = useState(false);
+    const [statusToDelete, setStatusToDelete] = useState<{ statusName: string; entityName: string } | null>(null);
+
     if (!entity) return null;
+
+    const handleDeleteStatusConfirm = () => {
+        if (statusToDelete && onDeleteStatus) {
+            onDeleteStatus(statusToDelete.statusName, statusToDelete.entityName);
+            setStatusToDelete(null);
+        }
+    };
+
+    const handleDeleteStatusCancel = () => {
+        setShowDeleteStatusConfirm(false);
+        setStatusToDelete(null);
+    };
 
     const typeColors: { [key in EntityType | string]: string } = {
         pc: 'text-yellow-600 dark:text-yellow-400',
@@ -327,7 +343,76 @@ export const EntityInfoModal: React.FC<{
                         )}
 
                         {/* Mastery for skills only (characters already have realm display above) */}
-                        {entity.mastery && entity.type === 'skill' && <p><strong className="font-semibold text-slate-800 dark:text-gray-100">Mức độ thành thạo:</strong> <span className="text-cyan-600 dark:text-cyan-400 font-semibold">{entity.mastery}</span></p>}
+                        {entity.mastery && entity.type === 'skill' && (
+                            <>
+                                <p><strong className="font-semibold text-slate-800 dark:text-gray-100">Mức độ thành thạo:</strong> <span className="text-cyan-600 dark:text-cyan-400 font-semibold">{entity.mastery}</span></p>
+                                
+                                {/* Skill Experience Bar */}
+                                {(() => {
+                                    const skillExp = entity.skillExp || 0;
+                                    const masteryThresholds = { 'Sơ Cấp': 100, 'Trung Cấp': 300, 'Cao Cấp': 600, 'Đại Thành': 1000, 'Viên Mãn': 1500 };
+                                    const maxExp = masteryThresholds[entity.mastery] || 100;
+                                    const expPercentage = Math.min((skillExp / maxExp) * 100, 100);
+                                    const isFull = expPercentage >= 100;
+                                    const isCapped = entity.skillCapped === true;
+                                    const isEligibleForBreakthrough = entity.breakthroughEligible === true;
+                                    const isMaxMastery = entity.mastery === 'Viên Mãn';
+                                    
+                                    return (
+                                        <div className="mt-3">
+                                            <div className="text-xs text-slate-600 dark:text-gray-400 mb-2 flex items-center gap-2">
+                                                <span>Kinh nghiệm kỹ năng</span>
+                                                {isCapped && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 text-xs font-medium rounded-full border border-orange-300 dark:border-orange-700">
+                                                        🔒 Đạt Bình Cảnh
+                                                    </span>
+                                                )}
+                                                {isEligibleForBreakthrough && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 text-xs font-medium rounded-full border border-purple-300 dark:border-purple-700 animate-pulse">
+                                                        ✦ Có thể đột phá
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className={`relative w-full bg-slate-200 dark:bg-slate-700 rounded-lg h-5 overflow-hidden ${
+                                                isCapped 
+                                                    ? 'ring-2 ring-orange-400 shadow-lg shadow-orange-400/50' 
+                                                    : isFull 
+                                                        ? 'ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/50' 
+                                                        : ''
+                                            }`}>
+                                                <div 
+                                                    className={`h-full rounded-lg transition-all duration-500 ${
+                                                        isCapped
+                                                            ? 'bg-gradient-to-r from-orange-400 to-red-500'
+                                                            : isFull 
+                                                                ? 'bg-gradient-to-r from-yellow-400 to-yellow-500' 
+                                                                : 'bg-gradient-to-r from-cyan-500 to-blue-500'
+                                                    }`}
+                                                    style={{ width: `${expPercentage}%` }}
+                                                ></div>
+                                                <div className={`absolute inset-0 flex items-center justify-center text-xs font-semibold ${
+                                                    isCapped || isFull ? 'text-black' : 'text-white'
+                                                }`}>
+                                                    {formatNumber(skillExp)}/{formatNumber(maxExp)}
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-slate-500 dark:text-gray-500 mt-1 text-center">
+                                                {isCapped && isMaxMastery
+                                                    ? '🏆 Đã đạt tối đa!'
+                                                    : isCapped
+                                                        ? isEligibleForBreakthrough
+                                                            ? '✦ Sẵn sàng đột phá! Tìm lựa chọn "✦Đột Phá✦"'
+                                                            : '🔒 Chờ cơ hội đột phá (20% mỗi lượt)'
+                                                        : isFull
+                                                            ? 'Sẵn sàng thăng cấp!'
+                                                            : `${expPercentage.toFixed(1)}% đến cấp độ tiếp theo`
+                                                }
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </>
+                        )}
                     </div>
 
                     {/* PC specific info - Skills */}
@@ -403,11 +488,10 @@ export const EntityInfoModal: React.FC<{
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        if (window.confirm(`Bạn có chắc chắn muốn xóa trạng thái "${status.name}"?`)) {
-                                                            onDeleteStatus(status.name, entity.name);
-                                                        }
+                                                        setStatusToDelete({ statusName: status.name, entityName: entity.name });
+                                                        setShowDeleteStatusConfirm(true);
                                                     }}
-                                                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 shadow-lg z-10"
+                                                    className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 hover:scale-110 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg z-10"
                                                     title={`Xóa trạng thái: ${status.name}`}
                                                 >
                                                     ×
@@ -556,6 +640,18 @@ export const EntityInfoModal: React.FC<{
                     )}
                 </div>
             </div>
+
+            {/* Delete Status Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={showDeleteStatusConfirm}
+                onClose={handleDeleteStatusCancel}
+                onConfirm={handleDeleteStatusConfirm}
+                title="Xác nhận xóa trạng thái"
+                message={`Bạn có muốn xóa trạng thái này không?${statusToDelete ? ` "${statusToDelete.statusName}"` : ''}`}
+                confirmText="Có"
+                cancelText="Hủy bỏ"
+                confirmButtonColor="blue"
+            />
         </div>
     );
 };

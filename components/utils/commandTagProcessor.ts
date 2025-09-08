@@ -3,6 +3,7 @@ import { partyDebugger } from './partyDebugger';
 import { MemoryEnhancer } from './MemoryEnhancer';
 import { ReferenceIdGenerator } from './ReferenceIdGenerator';
 import { regexEngine, RegexPlacement } from './RegexEngine';
+import { addSkillExp, attemptBreakthrough, rollForBreakthroughEligibility } from './skillExpManager';
 
 export interface CommandTagProcessorParams {
     // State setters
@@ -406,6 +407,116 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                             return prev;
                         });
                         break;
+                    case 'SKILL_EXP_REWARD':
+                        // Award skill experience to all learned skills
+                        setKnownEntities(prev => {
+                            const newEntities = { ...prev };
+                            const expAmount = parseInt(attributes.amount) || 0;
+                            
+                            if (expAmount <= 0) return prev;
+                            
+                            // Find PC to get their learned skills
+                            const pc = Object.values(newEntities).find(e => e.type === 'pc');
+                            if (!pc || !pc.learnedSkills) {
+                                console.warn(`⚠️ SKILL_EXP_REWARD: No PC or learned skills found`);
+                                return prev;
+                            }
+                            
+                            // Award experience to each learned skill using breakthrough system
+                            let skillsUpdated = 0;
+                            for (const skillName of pc.learnedSkills) {
+                                const skill = newEntities[skillName];
+                                if (skill && skill.type === 'skill') {
+                                    // Use imported addSkillExp function
+                                    const result = addSkillExp(skill, expAmount);
+                                    
+                                    newEntities[skillName] = result.skill;
+                                    
+                                    if (result.expGained > 0) {
+                                        skillsUpdated++;
+                                        console.log(`🎯 Skill ${skillName} gained ${result.expGained} exp`);
+                                    }
+                                }
+                            }
+                            
+                            if (skillsUpdated > 0) {
+                                console.log(`✅ SKILL_EXP_REWARD: Awarded ${expAmount} exp to ${skillsUpdated} skill(s)`);
+                            }
+                            
+                            return newEntities;
+                        });
+                        break;
+                    case 'SKILL_EXP_GAIN':
+                        // Award experience to a specific skill using breakthrough system
+                        setKnownEntities(prev => {
+                            const newEntities = { ...prev };
+                            const skillName = attributes.skillName;
+                            const expAmount = parseInt(attributes.amount) || 0;
+                            
+                            if (!skillName || expAmount <= 0) return prev;
+                            
+                            const skill = newEntities[skillName];
+                            if (!skill || skill.type !== 'skill') {
+                                console.warn(`⚠️ SKILL_EXP_GAIN: Skill "${skillName}" not found`);
+                                return prev;
+                            }
+                            
+                            // Use imported addSkillExp function
+                            const result = addSkillExp(skill, expAmount);
+                            
+                            newEntities[skillName] = result.skill;
+                            
+                            if (result.expGained > 0) {
+                                console.log(`⚔️ Skill ${skillName} gained ${result.expGained} exp`);
+                            }
+                            
+                            return newEntities;
+                        });
+                        break;
+                    case 'SKILL_BREAKTHROUGH':
+                        // Handle skill breakthrough attempts
+                        setKnownEntities(prev => {
+                            const newEntities = { ...prev };
+                            const skillName = attributes.skillName;
+                            const successRate = parseFloat(attributes.successRate) || 0.75;
+                            
+                            if (!skillName) return prev;
+                            
+                            const skill = newEntities[skillName];
+                            if (!skill || skill.type !== 'skill') {
+                                console.warn(`⚠️ SKILL_BREAKTHROUGH: Skill "${skillName}" not found`);
+                                return prev;
+                            }
+                            
+                            // Use imported attemptBreakthrough function
+                            const result = attemptBreakthrough(skill, successRate);
+                            
+                            newEntities[skillName] = result.skill;
+                            
+                            if (result.masteryLevelUp) {
+                                console.log(`✨ BREAKTHROUGH SUCCESS: ${skillName} ${result.previousMastery} → ${result.newMastery}`);
+                            } else {
+                                console.log(`💥 BREAKTHROUGH FAILED: ${skillName} remains capped`);
+                            }
+                            
+                            return newEntities;
+                        });
+                        break;
+                    case 'SKILL_BREAKTHROUGH_ROLL':
+                        // Roll for breakthrough eligibility (20% chance per capped skill)
+                        setKnownEntities(prev => {
+                            // Use imported rollForBreakthroughEligibility function
+                            const allSkills = Object.values(prev).filter(entity => entity.type === 'skill');
+                            const updatedSkills = rollForBreakthroughEligibility(allSkills);
+                            
+                            const newEntities = { ...prev };
+                            updatedSkills.forEach(skill => {
+                                newEntities[skill.name] = skill;
+                            });
+                            
+                            return newEntities;
+                        });
+                        break;
                     case 'SKILL_LEARNED':
                         setKnownEntities(prev => {
                             const newEntities = { ...prev };
@@ -500,9 +611,18 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                         if (!updatedEntity.skills) {
                                             updatedEntity.skills = [];
                                         }
-                                        if (!updatedEntity.skills.includes(name)) {
+                                        // Check for duplicates by comparing base skill names (without mastery levels)
+                                        const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                        const hasSkillAlready = updatedEntity.skills.some(existingSkill => {
+                                            const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            return existingBaseName === baseSkillName;
+                                        });
+                                        
+                                        if (!hasSkillAlready) {
                                             updatedEntity.skills.push(name);
                                             console.log(`🎓 ${entityInKnown.type.toUpperCase()} ${skillLearner} learned skill: ${name}`);
+                                        } else {
+                                            console.log(`⚠️ ${entityInKnown.type.toUpperCase()} ${skillLearner} already has skill with base name: ${baseSkillName} (skipping duplicate)`);
                                         }
                                         newEntities[skillLearner] = updatedEntity;
                                         learnerFound = true;
@@ -519,9 +639,18 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                                     if (!updatedMember.skills) {
                                                         updatedMember.skills = [];
                                                     }
-                                                    if (!updatedMember.skills.includes(name)) {
+                                                    // Check for duplicates by comparing base skill names (without mastery levels)
+                                                    const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                    const hasSkillAlready = updatedMember.skills.some(existingSkill => {
+                                                        const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                        return existingBaseName === baseSkillName;
+                                                    });
+                                                    
+                                                    if (!hasSkillAlready) {
                                                         updatedMember.skills.push(name);
                                                         console.log(`🎓 Party ${member.type.toUpperCase()} ${skillLearner} learned skill: ${name}`);
+                                                    } else {
+                                                        console.log(`⚠️ Party ${member.type.toUpperCase()} ${skillLearner} already has skill with base name: ${baseSkillName} (skipping duplicate)`);
                                                     }
                                                     return updatedMember;
                                                 }
@@ -539,9 +668,18 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                             if (!updatedPc.learnedSkills) {
                                                 updatedPc.learnedSkills = [];
                                             }
-                                            if (!updatedPc.learnedSkills.includes(name)) {
+                                            // Check for duplicates by comparing base skill names (without mastery levels)
+                                            const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            const hasSkillAlready = updatedPc.learnedSkills.some(existingSkill => {
+                                                const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                return existingBaseName === baseSkillName;
+                                            });
+                                            
+                                            if (!hasSkillAlready) {
                                                 updatedPc.learnedSkills.push(name);
                                                 console.log(`🎓 PC ${pc.name} learned skill: ${name}`);
+                                            } else {
+                                                console.log(`⚠️ PC ${pc.name} already has skill with base name: ${baseSkillName} (skipping duplicate)`);
                                             }
                                             newEntities[pc.name] = updatedPc;
                                             learnerFound = true;
@@ -557,16 +695,25 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                             if (!updatedPc.learnedSkills) {
                                                 updatedPc.learnedSkills = [];
                                             }
-                                            if (!updatedPc.learnedSkills.includes(name)) {
+                                            // Check for duplicates by comparing base skill names (without mastery levels)
+                                            const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            const hasSkillAlready = updatedPc.learnedSkills.some(existingSkill => {
+                                                const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                return existingBaseName === baseSkillName;
+                                            });
+                                            
+                                            if (!hasSkillAlready) {
                                                 updatedPc.learnedSkills.push(name);
                                                 console.log(`🎓 PC ${pc.name} learned skill: ${name} (fallback)`);
+                                            } else {
+                                                console.log(`⚠️ PC ${pc.name} already has skill with base name: ${baseSkillName} (skipping duplicate fallback)`);
                                             }
                                             newEntities[pc.name] = updatedPc;
                                         }
                                     }
                                 } else {
                                     // No target specified - try intelligent detection first
-                                    console.warn(`⚠️ SKILL_LEARNED without learner parameter: ${name}. Attempting intelligent detection...`);
+                                    console.error(`❌ SKILL_LEARNED without learner parameter: ${name}. The learner parameter is REQUIRED for all SKILL_LEARNED tags. Attempting intelligent detection as fallback...`);
                                     
                                     // Smart detection: Look for recent context clues in skill name/description
                                     const skillContext = `${name} ${description}`.toLowerCase();
@@ -608,9 +755,18 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                             if (!updatedNpc.skills) {
                                                 updatedNpc.skills = [];
                                             }
-                                            if (!updatedNpc.skills.includes(name)) {
+                                            // Check for duplicates by comparing base skill names (without mastery levels)
+                                            const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            const hasSkillAlready = updatedNpc.skills.some(existingSkill => {
+                                                const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                return existingBaseName === baseSkillName;
+                                            });
+                                            
+                                            if (!hasSkillAlready) {
                                                 updatedNpc.skills.push(name);
                                                 console.log(`🎓 NPC ${detectedLearner} learned skill: ${name} (intelligent detection)`);
+                                            } else {
+                                                console.log(`⚠️ NPC ${detectedLearner} already has skill with base name: ${baseSkillName} (skipping duplicate - intelligent detection)`);
                                             }
                                             newEntities[detectedLearner] = updatedNpc;
                                         }
@@ -623,9 +779,18 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                             if (!updatedPc.learnedSkills) {
                                                 updatedPc.learnedSkills = [];
                                             }
-                                            if (!updatedPc.learnedSkills.includes(name)) {
+                                            // Check for duplicates by comparing base skill names (without mastery levels)
+                                            const baseSkillName = name.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                            const hasSkillAlready = updatedPc.learnedSkills.some(existingSkill => {
+                                                const existingBaseName = existingSkill.replace(/\s*\([^)]+\)\s*$/, '').trim();
+                                                return existingBaseName === baseSkillName;
+                                            });
+                                            
+                                            if (!hasSkillAlready) {
                                                 updatedPc.learnedSkills.push(name);
                                                 console.log(`🎓 PC ${pc.name} learned skill: ${name} (default target - no NPC detected)`);
+                                            } else {
+                                                console.log(`⚠️ PC ${pc.name} already has skill with base name: ${baseSkillName} (skipping duplicate - no NPC detected)`);
                                             }
                                             newEntities[pcName] = updatedPc;
                                         }
@@ -1164,10 +1329,36 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                             const newEntities = { ...prev };
                             const targetName = attributes.name;
                             if (newEntities[targetName]) {
-                                const { name, newDescription, ...updateData } = attributes;
+                                const { name, newDescription, change, attribute, ...updateData } = attributes;
                                 const finalUpdateData = { ...updateData };
                                 if (newDescription) {
                                     finalUpdateData.description = newDescription;
+                                }
+                                
+                                // Handle incremental changes using change attribute
+                                if (change && attribute) {
+                                    const entity = newEntities[targetName];
+                                    const currentValue = entity[attribute] || 0;
+                                    
+                                    // Parse change value (supports +100, -50, etc.)
+                                    let changeValue = 0;
+                                    if (typeof change === 'string') {
+                                        if (change.startsWith('+') || change.startsWith('-')) {
+                                            changeValue = parseInt(change, 10);
+                                        } else {
+                                            changeValue = parseInt(change, 10);
+                                        }
+                                    } else if (typeof change === 'number') {
+                                        changeValue = change;
+                                    }
+                                    
+                                    if (!isNaN(changeValue)) {
+                                        const newValue = Number(currentValue) + changeValue;
+                                        finalUpdateData[attribute] = newValue;
+                                        console.log(`📈 ENTITY_UPDATE incremental change: ${targetName}.${attribute} ${currentValue} ${change} = ${newValue}`);
+                                    } else {
+                                        console.warn(`⚠️ ENTITY_UPDATE: Invalid change value "${change}" for attribute "${attribute}"`);
+                                    }
                                 }
                                 
                                 let updatedEntity;
@@ -1428,6 +1619,15 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                             }
                             return newEntities;
                         });
+                        break;
+                    case 'SPECIAL_ITEM_GENERATE':
+                        // This tag signals the AI to generate a unique special item instead of using a generic placeholder
+                        // The AI will replace this with actual ITEM_AQUIRED tag(s) containing generated special items
+                        console.log(`🎁 SPECIAL_ITEM_GENERATE request processed: ${attributes.questTitle} - AI should generate ${attributes.quantities || 1} unique special item(s)`);
+                        
+                        // Add a marker to the cleanStory to prompt AI to generate items
+                        const generatePrompt = `[AI_GENERATE_SPECIAL_ITEM: Generate ${attributes.quantities || 1} unique mysterious special item(s) as reward(s) for completing "${attributes.questTitle}". Create items with unique names, descriptions, and abilities. Then use ITEM_AQUIRED tag(s) to add them to inventory.]`;
+                        cleanStory += ` ${generatePrompt}`;
                         break;
                     case 'REALM_UPDATE':
                         setKnownEntities(prev => {

@@ -1,33 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run build:*)",
-      "Bash(npm run dev:*)",
-      "Bash(npm run typecheck:*)",
-      "Bash(npx tsc:*)",
-      "Bash(node:*)",
-      "Bash(rm:*)",
-      "Bash(npm run:*)",
-      "Bash(npx ts-node:*)",
-      "Bash(npx tsx:*)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat/**)",
-      "Read(/D:\\Download\\0xcheat/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Bash(grep:*)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "Read(/D:\\Download\\0xcheat\\AISimul/**)",
-      "mcp__ide__executeCode",
-      "Bash(npm test:*)"
-    ],
-    "deny": [],
-    "ask": []
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "WebFetch",
+      "Grep",
+      "Glob",
+      "LS",
+      "MultiEdit",
+      "NotebookRead",
+      "NotebookEdit",
+      "TodoRead",
+      "TodoWrite",
+      "WebSearch"
+    ]
   }
 }

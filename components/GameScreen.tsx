@@ -7,6 +7,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { AIContext } from '../App.tsx';
 import type { SaveData, FormData, KnownEntities, Status, GameHistoryEntry, Memory, Entity, CustomRule, RegexRule, Chronicle, CompressedHistorySegment } from './types.ts';
 import { buildEnhancedRagPrompt } from './promptBuilder.ts';
+import { RetryStatusPanel, RetryStatusIndicator } from './game/RetryStatusPanel';
 
 // Extracted Handlers
 import { createGameActionHandlers } from './handlers/gameActionHandlers';
@@ -264,10 +265,10 @@ export const GameScreen: React.FC<{
         isUsingDefaultKey, userApiKeyCount, rotateKey, rehydratedChoices,
         temperature, topK, topP, enableCOT: gameSettings.enableCOT,
         setIsLoading, setChoices, setCustomAction, setStoryLog, setGameHistory,
-        setTurnCount, setCurrentTurnTokens, setTotalTokens, setNPCsPresent,
+        setTurnCount, setCurrentTurnTokens, setTotalTokens, setNPCsPresent, setQuests, setKnownEntities,
         gameHistory, customRules, regexRules, ruleChanges, setRuleChanges, parseStoryAndTags,
-        updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown
-    }), [ai, selectedModel, systemInstruction, responseSchema, isUsingDefaultKey, userApiKeyCount, rotateKey, rehydratedChoices, temperature, topK, topP, gameSettings.enableCOT, gameHistory, customRules, regexRules, ruleChanges, parseStoryAndTags, updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown, setNPCsPresent]);
+        knownEntities, updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown
+    }), [ai, selectedModel, systemInstruction, responseSchema, isUsingDefaultKey, userApiKeyCount, rotateKey, rehydratedChoices, temperature, topK, topP, gameSettings.enableCOT, gameHistory, customRules, regexRules, ruleChanges, parseStoryAndTags, knownEntities, updateChoiceHistory, updateCOTResearchLog, triggerHighTokenCooldown, setNPCsPresent, setQuests, setKnownEntities]);
 
     // Function to get current game state
     const getCurrentGameState = useCallback((): SaveData => {
@@ -338,6 +339,14 @@ export const GameScreen: React.FC<{
     // Define generateInitialStory callback before using it
     const generateInitialStory = useCallback(async () => {
         if (!pcEntity) return;
+        
+        // Safety check to ensure gameActionHandlers is properly initialized
+        if (!gameActionHandlers || !gameActionHandlers.generateInitialStory) {
+            console.error("⚠️ gameActionHandlers not initialized yet for generateInitialStory, retrying in 100ms...");
+            setTimeout(() => generateInitialStory(), 100);
+            return;
+        }
+        
         const initialHistory: GameHistoryEntry[] = [];
         await gameActionHandlers.generateInitialStory(worldData, knownEntities, pcEntity, initialHistory);
         isGeneratingRef.current = false;
@@ -616,6 +625,14 @@ export const GameScreen: React.FC<{
     }, [parseStoryAndTags]);
     const handleAction = useCallback(async (action: string) => {
         if (isLoading || !ai || isHighTokenCooldown) return;
+        
+        // Safety check to ensure gameActionHandlers is properly initialized
+        if (!gameActionHandlers || !gameActionHandlers.handleAction) {
+            console.error("⚠️ gameActionHandlers not initialized yet, retrying in 100ms...");
+            setTimeout(() => handleAction(action), 100);
+            return;
+        }
+        
         const currentGameState: SaveData = {
             worldData, knownEntities, statuses, quests, gameHistory, memories, party, customRules, systemInstruction, turnCount, totalTokens, gameTime, chronicle, compressedHistory
         };
@@ -822,6 +839,13 @@ export const GameScreen: React.FC<{
     const handleToggleMemoryPin = useCallback((index: number) => gameStateHandlers.handleToggleMemoryPin(index), [gameStateHandlers]);
     
     const handleSuggestAction = useCallback(async () => {
+        // Safety check to ensure gameActionHandlers is properly initialized
+        if (!gameActionHandlers || !gameActionHandlers.handleSuggestAction) {
+            console.error("⚠️ gameActionHandlers not initialized yet for handleSuggestAction, retrying in 100ms...");
+            setTimeout(() => handleSuggestAction(), 100);
+            return;
+        }
+        
         const currentGameState: SaveData = {
             worldData, knownEntities, statuses, quests, gameHistory, memories, party, customRules, systemInstruction, turnCount, totalTokens, gameTime, chronicle, compressedHistory
         };
@@ -1205,6 +1229,9 @@ export const GameScreen: React.FC<{
                 showRulesSavedSuccess={showRulesSavedSuccess} 
             />
             
+            {/* Retry Status Panel */}
+            <RetryStatusPanel className="mx-4 mb-2" />
+            
             <SidebarNav 
                 isOpen={isSidebarOpen} 
                 onClose={() => setIsSidebarOpen(false)}
@@ -1309,6 +1336,7 @@ export const GameScreen: React.FC<{
                         onEntityClick={handleEntityClick}
                         onStatusClick={handleStatusClick}
                         onDeleteStatus={handleDeleteStatus}
+                        onDiscardItem={handleDiscardItem}
                     />
                 </div>
                 
@@ -1318,6 +1346,7 @@ export const GameScreen: React.FC<{
                     apiKeyError={apiKeyError}
                     isLoading={isLoading}
                     choices={choices}
+                    quests={quests}
                     handleAction={handleAction}
                     debouncedHandleAction={debouncedHandleAction}
                     customAction={customAction}
