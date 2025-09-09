@@ -8,6 +8,8 @@ import { AIContext } from '../App.tsx';
 import type { SaveData, FormData, KnownEntities, Status, GameHistoryEntry, Memory, Entity, CustomRule, RegexRule, Chronicle, CompressedHistorySegment } from './types.ts';
 import { buildEnhancedRagPrompt } from './promptBuilder.ts';
 import { RetryStatusPanel, RetryStatusIndicator } from './game/RetryStatusPanel';
+import { setupQueuedChoiceHandler } from './utils/RetryIntegration';
+import { useLastChoiceRetry } from './utils/lastChoiceRetryHandler';
 
 // Extracted Handlers
 import { createGameActionHandlers } from './handlers/gameActionHandlers';
@@ -387,6 +389,37 @@ export const GameScreen: React.FC<{
             if (timer) clearInterval(timer);
         };
     }, [isHighTokenCooldown, cooldownEndTime]);
+
+    // Lazy initialization of retry system (only when needed)
+    const initializeRetrySystemRef = useRef<boolean>(false);
+    
+    const initializeRetrySystem = useCallback(() => {
+        if (initializeRetrySystemRef.current || !gameActionHandlers || !isAiReady) {
+            return;
+        }
+        
+        console.log('🔄 Initializing retry system on first error');
+        initializeRetrySystemRef.current = true;
+        
+        setupQueuedChoiceHandler(
+            gameActionHandlers,
+            getCurrentGameState(),
+            (newState: SaveData) => {
+                console.log('🔄 Updating game state for queued choice retry');
+                setGameHistory(newState.gameHistory || []);
+                setKnownEntities(newState.knownEntities || {});
+                setStoryLog(newState.storyLog || []);
+                setChoices(newState.choices || []);
+                setTurnCount(newState.turnCount || 0);
+            }
+        );
+    }, [gameActionHandlers, isAiReady, getCurrentGameState]);
+    
+    // Last choice retry system
+    const { handleErrorWithRetry, recordLastChoice } = useLastChoiceRetry(
+        gameActionHandlers,
+        initializeRetrySystem
+    );
 
     // Automatic cleanup and history management effect
     useEffect(() => {
@@ -1357,6 +1390,7 @@ export const GameScreen: React.FC<{
                     cooldownTimeLeft={cooldownTimeLeft}
                     onMap={() => setIsMapModalOpen(true)}
                     className="md:right-[42%]"
+                    gameState={getCurrentGameState()}
                 />
              
             </div>

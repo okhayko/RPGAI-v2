@@ -4,6 +4,7 @@ import { EnhancedRAG } from './utils/EnhancedRAG';
 import { MemoryAnalytics } from './utils/MemoryAnalytics';
 import { ReferenceBasedRAG, type CompactRAGContext } from './utils/ReferenceBasedRAG';
 import { ruleActivationEngine, type ActivationContext } from './utils/RuleActivationEngine';
+import { generateSkillChoiceContext } from './utils/skillChoiceEnhancer';
 
 // Helper function to normalize skill names (remove mastery level in parentheses)
 const normalizeName = (raw: string): string => {
@@ -1221,6 +1222,13 @@ Phân tích và tạo lựa chọn tuân thủ strict requirements:
 ⑤ **Information limitation**: chỉ dùng thông tin PC biết, tối đa 30 từ/choice
 ⑥ **Avoiding commands**: không dùng giọng điệu mệnh lệnh
 ⑦ **Category labeling**: hiển thị rõ thể loại [Hành Động], [Xã Hội], etc.
+⑧ **✨ SKILL MASTERY ADJUSTMENTS ✨**: QUAN TRỌNG - Khi tạo lựa chọn sử dụng kỹ năng, PHẢI tự động điều chỉnh success rate và risk dựa trên mastery level:
+   - **Sơ Cấp**: Base rate, không thay đổi risk
+   - **Trung Cấp**: +5% success rate
+   - **Cao Cấp**: +10% success rate, giảm risk 1 tier (Cực Cao→Cao, Cao→Trung Bình, etc.)
+   - **Đại Thành**: +15% success rate, giảm risk 1 tier  
+   - **Viên Mãn**: +20% success rate, giảm risk 2 tier
+   VÍ DỤ: "Huyết Đế Chú (Cao Cấp)" với base 40% success, Cao risk → 50% success, Trung Bình risk
 
 **BƯỚC 5: KIỂM TRA CUỐI**
 Tự hỏi bản thân:
@@ -2049,6 +2057,13 @@ Example JSON:
             prompt += `\n${choiceContext}`;
         }
         
+        // Add skill mastery context for choice generation
+        const skillMasteryContext = generateSkillChoiceContext(gameState);
+        if (skillMasteryContext) {
+            prompt += `\n${skillMasteryContext}`;
+            console.log(`✨ Added skill mastery context: ${skillMasteryContext.length} characters`);
+        }
+
         // Add advanced Chain of Thought reasoning (CONDITIONAL)
         console.log(`🔍 DEBUG COT: enableCOT = ${enableCOT} (${typeof enableCOT})`);
         if (enableCOT) {

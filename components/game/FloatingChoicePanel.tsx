@@ -12,6 +12,7 @@ import {
     parseCategoryFromChoice,
     type ChoiceCategory
 } from '../utils/categorySupportSystem';
+import { extractSkillNameFromChoice, parseSuccessRateFromChoice, parseRiskLevelFromChoice, adjustSuccessRate, adjustRiskLevel } from '../utils/skillMasteryAdjustments';
 
 // Legacy ChoiceData interface - deprecated, use ChoiceMetadata instead
 interface ChoiceData extends ChoiceMetadata {}
@@ -31,10 +32,11 @@ interface FloatingChoicePanelProps {
     className?: string;
     isHighTokenCooldown?: boolean;
     cooldownTimeLeft?: number;
+    gameState?: any;                  // Game state for skill mastery detection
 }
 
 // Utility functions for choice parsing and styling
-const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
+const parseChoiceData = (choice: string, quests: Quest[], gameState?: any): ChoiceData => {
     // Convert literal \n to actual newlines for proper parsing
     let normalizedChoice = choice.replace(/\\n/g, '\n');
     
@@ -48,6 +50,8 @@ const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
     let isNSFW = false;
     let questLink: QuestLink | undefined = undefined;
     let category: string | undefined = undefined;
+    let isSkillBoosted = false;
+    let skillName: string | undefined = undefined;
     
     // Extract category from ✦Category✦ format at the beginning
     const categoryMatch = content.match(/^✦([^✦]+)✦\s*/);
@@ -117,6 +121,26 @@ const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
         content = content.replace(questMatch[0], '').trim();
     }
     
+    // Detect skill-boosted choices
+    if (gameState) {
+        skillName = extractSkillNameFromChoice(content);
+        if (skillName) {
+            // Check if this skill exists in player's learned skills
+            const pc = gameState.party?.find((p: any) => p.type === 'pc');
+            if (pc && pc.learnedSkills?.includes(skillName)) {
+                // Find skill entity to check mastery level
+                const skillEntity = Object.values(gameState.knownEntities || {}).find((entity: any) => 
+                    entity.type === 'skill' && entity.name.toLowerCase().includes(skillName.toLowerCase())
+                );
+                
+                if (skillEntity && skillEntity.mastery && skillEntity.mastery !== 'Sơ Cấp') {
+                    isSkillBoosted = true;
+                    console.log(`✨ Detected skill-boosted choice: ${skillName} (${skillEntity.mastery})`);
+                }
+            }
+        }
+    }
+    
     // Clean up content - remove extra whitespace and leading numbers
     content = content
         .replace(/^\d+\.\s*/, '') // Remove leading numbers like "1. "
@@ -174,11 +198,36 @@ const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
         }
     }
     
+    // Apply skill mastery adjustments ON TOP of support boosts
+    let finalSuccessRate = supportedSuccessRate;
+    let finalRisk = supportedRisk;
+    
+    if (isSkillBoosted && skillName && gameState?.knownEntities) {
+        const skillEntity = Object.values(gameState.knownEntities).find((entity: any) => 
+            entity.type === 'skill' && entity.name.toLowerCase().includes(skillName.toLowerCase())
+        );
+        
+        if (skillEntity?.mastery && skillEntity.mastery !== 'Sơ Cấp') {
+            // Apply skill adjustments on top of support-adjusted values
+            const originalFinalRate = finalSuccessRate;
+            const originalFinalRisk = finalRisk;
+            
+            finalSuccessRate = adjustSuccessRate(finalSuccessRate || 0, skillEntity.mastery);
+            if (finalRisk) {
+                finalRisk = adjustRiskLevel(finalRisk, skillEntity.mastery);
+            }
+            
+            console.log(`🌟 Applied skill mastery ${skillEntity.mastery} on ${skillName}:`);
+            console.log(`   Success: ${originalFinalRate}% → ${finalSuccessRate}%`);
+            console.log(`   Risk: ${originalFinalRisk} → ${finalRisk}`);
+        }
+    }
+    
     return {
         content,
         time,
-        successRate: supportedSuccessRate,
-        risk: supportedRisk,
+        successRate: finalSuccessRate,
+        risk: finalRisk,
         riskDescription,
         rewards,
         isNSFW,
@@ -188,7 +237,10 @@ const parseChoiceData = (choice: string, quests: Quest[]): ChoiceData => {
         originalSuccessRate: successRate,
         originalRisk: risk,
         supportIndicator,
-        supportTooltip
+        supportTooltip,
+        // Add skill-boosted data
+        isSkillBoosted,
+        skillName
     };
 };
 
@@ -225,7 +277,8 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
     isCustomActionLocked,
     className = '',
     isHighTokenCooldown = false,
-    cooldownTimeLeft = 0
+    cooldownTimeLeft = 0,
+    gameState
 }) => {
     const [isChoicesExpanded, setIsChoicesExpanded] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
@@ -372,7 +425,7 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
             ) : (
               <div className="space-y-3">
                 {choices.map((choice, index) => {
-                  const choiceData = parseChoiceData(choice, quests);
+                  const choiceData = parseChoiceData(choice, quests, gameState);
                   return (
                     <button
                       key={index}
@@ -453,6 +506,14 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
                                   {choiceData.originalSuccessRate !== undefined && choiceData.originalSuccessRate !== choiceData.successRate && (
                                     <span className="text-green-400 ml-1" title="Được hỗ trợ bởi lựa chọn trước đó">⬆</span>
                                   )}
+                                  {choiceData.isSkillBoosted && (
+                                    <span 
+                                      className="text-blue-300 ml-1 font-bold" 
+                                      title={`Kỹ năng ${choiceData.skillName} đã nâng cao tỷ lệ thành công`}
+                                    >
+                                      ✦
+                                    </span>
+                                  )}
                                 </span>
                               </span>
                             )}
@@ -468,6 +529,14 @@ export const FloatingChoicePanel: React.FC<FloatingChoicePanelProps> = memo(({
                                   {choiceData.risk}
                                   {choiceData.originalRisk && choiceData.originalRisk !== choiceData.risk && (
                                     <span className="text-green-400 ml-1" title="Giảm rủi ro nhờ hỗ trợ">⬇</span>
+                                  )}
+                                  {choiceData.isSkillBoosted && (
+                                    <span 
+                                      className="text-blue-300 ml-1 font-bold" 
+                                      title={`Kỹ năng ${choiceData.skillName} đã giảm rủi ro`}
+                                    >
+                                      ✦
+                                    </span>
                                   )}
                                 </span>
                                 {choiceData.riskDescription && (

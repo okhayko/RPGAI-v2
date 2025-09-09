@@ -83,6 +83,16 @@ export class ApiRetrySystem {
         const errorStr = error?.message?.toLowerCase() || error?.toString?.()?.toLowerCase() || '';
         const status = error?.status || error?.statusCode;
         
+        // Check for quota exceeded errors (high priority - most common issue)
+        if (errorStr.includes('quota') || errorStr.includes('exceeded') || errorStr.includes('you exceeded your current quota')) {
+            return { isRetryable: true, statusCode: status || 429, message: 'Quota exceeded - AI service temporarily unavailable' };
+        }
+        
+        // Check for 429 Too Many Requests
+        if (status === 429 || errorStr.includes('429') || errorStr.includes('too many requests')) {
+            return { isRetryable: true, statusCode: 429, message: 'Rate limit exceeded - too many requests' };
+        }
+        
         // Check for 503 Service Unavailable
         if (status === 503 || errorStr.includes('503')) {
             return { isRetryable: true, statusCode: 503, message: 'Service temporarily unavailable' };
@@ -91,6 +101,11 @@ export class ApiRetrySystem {
         // Check for model overloaded errors
         if (errorStr.includes('overloaded') || errorStr.includes('unavailable') || errorStr.includes('rate limit')) {
             return { isRetryable: true, message: 'Model overloaded or rate limited' };
+        }
+        
+        // Check for Gemini API specific errors
+        if (errorStr.includes('resource_exhausted') || errorStr.includes('billing') || errorStr.includes('plan and billing details')) {
+            return { isRetryable: true, message: 'Gemini API resource exhausted - quota limit reached' };
         }
         
         // Check for network errors
