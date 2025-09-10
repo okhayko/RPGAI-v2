@@ -474,11 +474,12 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                         });
                         break;
                     case 'SKILL_BREAKTHROUGH':
-                        // Handle skill breakthrough attempts
+                        // Handle skill breakthrough attempts - check if already pre-calculated
                         setKnownEntities(prev => {
                             const newEntities = { ...prev };
                             const skillName = attributes.skillName;
                             const successRate = parseFloat(attributes.successRate) || 0.75;
+                            const preCalculatedResult = attributes.result; // "success" or "failure"
                             
                             if (!skillName) return prev;
                             
@@ -488,9 +489,20 @@ export const createCommandTagProcessor = (params: CommandTagProcessorParams) => 
                                 return prev;
                             }
                             
-                            // Use imported attemptBreakthrough function
-                            const result = attemptBreakthrough(skill, successRate);
+                            // If result was pre-calculated, skill state should already be updated
+                            if (preCalculatedResult) {
+                                console.log(`✅ SKILL_BREAKTHROUGH: Using pre-calculated result for ${skillName}: ${preCalculatedResult.toUpperCase()}`);
+                                // State was already updated in gameActionHandlers, just log confirmation
+                                if (preCalculatedResult === "success") {
+                                    console.log(`🔄 Confirmed: ${skillName} breakthrough SUCCESS - skill state already updated`);
+                                } else {
+                                    console.log(`🔄 Confirmed: ${skillName} breakthrough FAILURE - skill state already updated`);
+                                }
+                                return newEntities; // No additional processing needed
+                            }
                             
+                            // Legacy path: calculate result if not pre-calculated
+                            const result = attemptBreakthrough(skill, successRate);
                             newEntities[skillName] = result.skill;
                             
                             if (result.masteryLevelUp) {

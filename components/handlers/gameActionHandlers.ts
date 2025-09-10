@@ -465,18 +465,44 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
         const { detectSkillUsageFromChoice } = await import('../utils/skillUsageDetector');
         const skillUsageResult = detectSkillUsageFromChoice(originalAction, knownEntities);
         
-        // Check if this is a breakthrough choice
+        // Check if this is a breakthrough choice and pre-calculate result
         const { isBreakthroughChoice, extractSkillFromBreakthroughChoice, extractSuccessRateFromChoice } = await import('../utils/breakthroughChoiceGenerator');
+        const { attemptBreakthrough } = await import('../utils/skillExpManager');
         const isBreakthrough = isBreakthroughChoice(originalAction);
         let breakthroughConstraint = '';
+        let preCalculatedBreakthroughResult: any = null;
         
         if (isBreakthrough) {
             const skillName = extractSkillFromBreakthroughChoice(originalAction);
             const successRate = extractSuccessRateFromChoice(originalAction);
             
             if (skillName) {
-                breakthroughConstraint = `\n\n**✦ BREAKTHROUGH ATTEMPT ✦**: This is a breakthrough attempt for skill "${skillName}" with ${(successRate * 100).toFixed(0)}% success rate. You MUST use the tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}"]`;
-                console.log(`✦ Breakthrough attempt detected for ${skillName} (${(successRate * 100).toFixed(0)}% success rate)`);
+                // Pre-calculate breakthrough result so AI knows what happened
+                const skill = knownEntities[skillName];
+                if (skill && skill.type === 'skill') {
+                    preCalculatedBreakthroughResult = attemptBreakthrough(skill, successRate);
+                    const success = preCalculatedBreakthroughResult.masteryLevelUp;
+                    
+                    // Update skill entity immediately with pre-calculated result
+                    const updatedEntities = { ...knownEntities };
+                    updatedEntities[skillName] = preCalculatedBreakthroughResult.skill;
+                    setKnownEntities(updatedEntities);
+                    
+                    breakthroughConstraint = `\n\n**✦ BREAKTHROUGH RESULT ✦**: Breakthrough attempt for "${skillName}" has been ${success ? 'SUCCESSFUL' : 'FAILED'}.` +
+                        (success ? 
+                            ` The skill advanced from ${preCalculatedBreakthroughResult.previousMastery} to ${preCalculatedBreakthroughResult.newMastery}. You MUST write a story describing successful breakthrough, advancement, and new power gained. Use tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}", result="success"]` :
+                            ` The skill remains at ${skill.mastery} level and is still capped. You MUST write a story describing failed breakthrough, possible backlash, fatigue, or temporary setback. Use tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}", result="failure"]`);
+                    
+                    console.log(`✦ Breakthrough pre-calculated for ${skillName}: ${success ? 'SUCCESS' : 'FAILURE'} (${(successRate * 100).toFixed(0)}% rate)`);
+                    
+                    if (success) {
+                        console.log(`✨ BREAKTHROUGH SUCCESS: ${skillName} ${preCalculatedBreakthroughResult.previousMastery} → ${preCalculatedBreakthroughResult.newMastery}`);
+                    } else {
+                        console.log(`💥 BREAKTHROUGH FAILED: ${skillName} remains capped at ${skill.mastery}`);
+                    }
+                } else {
+                    console.warn(`⚠️ Skill "${skillName}" not found for breakthrough attempt`);
+                }
             }
         }
         
