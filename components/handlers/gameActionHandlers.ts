@@ -478,41 +478,68 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
             
             if (skillName) {
                 // Pre-calculate breakthrough result so AI knows what happened
-                const skill = knownEntities[skillName];
+                // Try both the exact skill name and the base name without mastery
+                let skill = knownEntities[skillName];
+                if (!skill) {
+                    const baseSkillName = skillName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                    skill = knownEntities[baseSkillName];
+                }
+                
                 if (skill && skill.type === 'skill') {
                     preCalculatedBreakthroughResult = attemptBreakthrough(skill, successRate);
                     const success = preCalculatedBreakthroughResult.masteryLevelUp;
                     
                     // Update skill entity immediately with pre-calculated result
                     const updatedEntities = { ...knownEntities };
-                    updatedEntities[skillName] = preCalculatedBreakthroughResult.skill;
                     
-                    // If breakthrough succeeded, also update the skill name with new mastery in entity names
+                    // Determine the actual skill entity key (might be base name without mastery)
+                    const baseSkillName = skillName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                    const actualSkillKey = knownEntities[skillName] ? skillName : baseSkillName;
+                    
                     if (success) {
-                        const skillBaseName = skillName.replace(/\s*\([^)]*\)\s*$/, '').trim();
-                        const newSkillName = `${skillBaseName} (${preCalculatedBreakthroughResult.newMastery})`;
+                        const newSkillName = `${baseSkillName} (${preCalculatedBreakthroughResult.newMastery})`;
                         
-                        // Remove old skill name and add new one
-                        delete updatedEntities[skillName];
+                        // Remove old skill entity and add new one with updated properties
+                        delete updatedEntities[actualSkillKey];
                         updatedEntities[newSkillName] = {
                             ...preCalculatedBreakthroughResult.skill,
                             name: newSkillName
                         };
                         
-                        // Update PC's learnedSkills array to use new skill name
+                        // Update PC's learnedSkills array
                         const pc = Object.values(updatedEntities).find(e => e.type === 'pc');
                         if (pc && pc.learnedSkills) {
-                            const skillIndex = pc.learnedSkills.indexOf(skillName);
+                            const updatedPC = { ...pc };
+                            updatedPC.learnedSkills = [...pc.learnedSkills];
+                            
+                            // Try to find skill in learnedSkills by both exact match and partial match
+                            let skillIndex = updatedPC.learnedSkills.findIndex(s => s === skillName);
+                            let originalSkillName = skillName;
+                            
+                            if (skillIndex === -1) {
+                                // Try matching by base name
+                                skillIndex = updatedPC.learnedSkills.findIndex(s => s.includes(baseSkillName));
+                                if (skillIndex !== -1) {
+                                    originalSkillName = updatedPC.learnedSkills[skillIndex];
+                                }
+                            }
+                            
                             if (skillIndex !== -1) {
-                                const updatedPC = { ...pc };
-                                updatedPC.learnedSkills = [...pc.learnedSkills];
                                 updatedPC.learnedSkills[skillIndex] = newSkillName;
                                 updatedEntities[pc.name] = updatedPC;
-                                console.log(`🔄 PC learnedSkills updated: ${skillName} → ${newSkillName}`);
+                                console.log(`🔄 PC learnedSkills updated: ${originalSkillName} → ${newSkillName}`);
                             }
                         }
                         
-                        console.log(`🔄 Skill name updated: ${skillName} → ${newSkillName}`);
+                        console.log(`🔄 Skill entity updated: ${actualSkillKey} → ${newSkillName}`);
+                        console.log(`✨ BREAKTHROUGH SUCCESS: Skill advanced to ${preCalculatedBreakthroughResult.newMastery}, EXP reset to ${preCalculatedBreakthroughResult.skill.skillExp}/${preCalculatedBreakthroughResult.skill.maxSkillExp}`);
+                    } else {
+                        // Breakthrough failed - update the existing skill entity
+                        updatedEntities[actualSkillKey] = {
+                            ...preCalculatedBreakthroughResult.skill,
+                            name: actualSkillKey
+                        };
+                        console.log(`💥 BREAKTHROUGH FAILED: ${actualSkillKey} remains at ${skill.mastery}`);
                     }
                     
                     setKnownEntities(updatedEntities);
