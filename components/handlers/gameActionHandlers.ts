@@ -486,11 +486,40 @@ Hãy tạo một câu chuyện mở đầu cuốn hút${pcEntity.motivation ? ` 
                     // Update skill entity immediately with pre-calculated result
                     const updatedEntities = { ...knownEntities };
                     updatedEntities[skillName] = preCalculatedBreakthroughResult.skill;
+                    
+                    // If breakthrough succeeded, also update the skill name with new mastery in entity names
+                    if (success) {
+                        const skillBaseName = skillName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+                        const newSkillName = `${skillBaseName} (${preCalculatedBreakthroughResult.newMastery})`;
+                        
+                        // Remove old skill name and add new one
+                        delete updatedEntities[skillName];
+                        updatedEntities[newSkillName] = {
+                            ...preCalculatedBreakthroughResult.skill,
+                            name: newSkillName
+                        };
+                        
+                        // Update PC's learnedSkills array to use new skill name
+                        const pc = Object.values(updatedEntities).find(e => e.type === 'pc');
+                        if (pc && pc.learnedSkills) {
+                            const skillIndex = pc.learnedSkills.indexOf(skillName);
+                            if (skillIndex !== -1) {
+                                const updatedPC = { ...pc };
+                                updatedPC.learnedSkills = [...pc.learnedSkills];
+                                updatedPC.learnedSkills[skillIndex] = newSkillName;
+                                updatedEntities[pc.name] = updatedPC;
+                                console.log(`🔄 PC learnedSkills updated: ${skillName} → ${newSkillName}`);
+                            }
+                        }
+                        
+                        console.log(`🔄 Skill name updated: ${skillName} → ${newSkillName}`);
+                    }
+                    
                     setKnownEntities(updatedEntities);
                     
                     breakthroughConstraint = `\n\n**✦ BREAKTHROUGH RESULT ✦**: Breakthrough attempt for "${skillName}" has been ${success ? 'SUCCESSFUL' : 'FAILED'}.` +
                         (success ? 
-                            ` The skill advanced from ${preCalculatedBreakthroughResult.previousMastery} to ${preCalculatedBreakthroughResult.newMastery}. You MUST write a story describing successful breakthrough, advancement, and new power gained. Use tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}", result="success"]` :
+                            ` The skill advanced from ${preCalculatedBreakthroughResult.previousMastery} to ${preCalculatedBreakthroughResult.newMastery}. Skill state has been automatically updated. You MUST write a story describing successful breakthrough, advancement, and new power gained. Use tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}", result="success"]` :
                             ` The skill remains at ${skill.mastery} level and is still capped. You MUST write a story describing failed breakthrough, possible backlash, fatigue, or temporary setback. Use tag: [SKILL_BREAKTHROUGH: skillName="${skillName}", successRate="${successRate}", result="failure"]`);
                     
                     console.log(`✦ Breakthrough pre-calculated for ${skillName}: ${success ? 'SUCCESS' : 'FAILURE'} (${(successRate * 100).toFixed(0)}% rate)`);

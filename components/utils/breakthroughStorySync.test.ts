@@ -171,6 +171,33 @@ describe('Breakthrough Story Synchronization', () => {
             
             console.log('✅ End-to-end breakthrough flow maintains consistency');
         });
+
+        it('should update skill names with new mastery levels on success', async () => {
+            console.log('🧪 Testing skill name updates after breakthrough...');
+            
+            // Create a skill with mastery level in name
+            const skillWithMastery = {
+                ...mockSkill,
+                name: 'Thiết Cốt Quyền (Sơ Cấp)'
+            };
+            
+            // Force successful breakthrough
+            vi.spyOn(Math, 'random').mockReturnValue(0.1);
+            const result = attemptBreakthrough(skillWithMastery, 0.75);
+            
+            expect(result.masteryLevelUp).toBe(true);
+            expect(result.previousMastery).toBe('Sơ Cấp');
+            expect(result.newMastery).toBe('Trung Cấp');
+            
+            // Simulate the name update logic
+            const skillBaseName = skillWithMastery.name.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            const expectedNewName = `${skillBaseName} (${result.newMastery})`;
+            
+            expect(skillBaseName).toBe('Thiết Cốt Quyền');
+            expect(expectedNewName).toBe('Thiết Cốt Quyền (Trung Cấp)');
+            
+            console.log('✅ Skill name update logic verified');
+        });
     });
 
     describe('Console Logging Verification', () => {
